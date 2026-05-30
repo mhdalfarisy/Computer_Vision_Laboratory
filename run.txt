@@ -1,0 +1,4 @@
+cd /Users/muhammadalfarisy/Documents/Portfolio/project_website
+source venv/bin/activate
+cd web_computer_vision
+python app.py

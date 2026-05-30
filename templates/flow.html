@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Alur Kerja — Computer Vision Laboratory</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}"/>
+  <style>
+    html, body { overflow: auto; }
+    /* All main styles are in style.css — only page-specific overrides here */
+    @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.6;} }
+  </style>
+</head>
+<body>
+<div class="app" style="overflow:auto; height:auto; min-height:100vh;">
+
+  <header class="topbar">
+    <div class="topbar-brand">
+      <img src="{{ url_for('static', filename='images/profile.jpg') }}" alt="Faris"
+           style="width:32px; height:32px; border-radius:50%; object-fit:cover; object-position:center top;
+                  border:2px solid rgba(99,102,241,0.6); box-shadow:0 0 8px rgba(99,102,241,0.5);" />
+      Computer Vision Laboratory
+    </div>
+    <div class="topbar-center">
+      <span class="live-dot"></span> Alur Kerja YOLO
+    </div>
+    <div class="topbar-right">
+      <a href="/evaluate" class="btn btn-ghost" style="padding:5px 12px; font-size:0.78rem;">📊 Evaluasi</a>
+      <a href="/train"    class="btn btn-ghost" style="padding:5px 12px; font-size:0.78rem;">⚙️ Training</a>
+      <a href="/"         class="btn btn-ghost" style="padding:5px 12px; font-size:0.78rem;">🖥 Monitor</a>
+      <span id="clock">--:--:--</span>
+      <a href="/logout" class="btn btn-ghost" style="padding:5px 12px; font-size:0.78rem; border-color:rgba(239,68,68,0.4); color:#fca5a5;" title="Logout">🚪 Keluar</a>
+    </div>
+  </header>
+
+  <div class="flow-wrap">
+    <div class="page-header">
+      <div>
+        <h1>🔄 Alur Kerja YOLOv8 — End to End</h1>
+        <p>Dari pengumpulan data hingga deteksi objek secara real-time</p>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <a href="/train" class="btn btn-ghost">⚙️ Training</a>
+        <a href="/"     class="btn btn-ghost">← Monitor</a>
+      </div>
+    </div>
+
+    <div class="pipeline">
+
+      <!-- ══ Step 1: Pengumpulan Data ══ -->
+      <div class="step s1">
+        <div class="step-line">
+          <div class="step-circle">📷</div>
+          <div class="step-connector"></div>
+        </div>
+        <div class="step-card">
+          <div class="step-title">
+            Pengumpulan Data
+            <span class="step-badge badge-s1">STEP 1</span>
+          </div>
+          <p class="step-desc">
+            Gambar dikumpulkan dari berbagai sumber yang merepresentasikan kondisi nyata di ruang ujian —
+            berbagai pencahayaan, sudut pandang, dan latar belakang. Dataset menggunakan format standar
+            yang kompatibel dengan YOLOv8.
+          </p>
+          <div class="stat-row">
+            <div class="stat-pill">🖼 Total gambar <strong id="totalImg">–</strong></div>
+            <div class="stat-pill">📁 Format <strong>JPG / PNG</strong></div>
+            <div class="stat-pill">🌐 Sumber <strong>Roboflow Dataset</strong></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ Step 2: Anotasi / Labeling ══ -->
+      <div class="step s2">
+        <div class="step-line">
+          <div class="step-circle">🏷</div>
+          <div class="step-connector"></div>
+        </div>
+        <div class="step-card">
+          <div class="step-title">
+            Anotasi & Labeling
+            <span class="step-badge badge-s2">STEP 2</span>
+          </div>
+          <p class="step-desc">
+            Setiap gambar diberi label manual langsung dari web menggunakan dua mode anotasi:
+            <strong>Bounding Box</strong> (drag kotak) atau <strong>Polygon</strong> (klik titik-titik mengikuti bentuk objek).
+            Label disimpan dalam format YOLO (<code style="background:var(--bg3);padding:1px 5px;border-radius:4px;">.txt</code>) —
+            bounding box: <em>class_id cx cy w h</em>, polygon: <em>class_id x1 y1 x2 y2...</em>, semua dinormalisasi 0–1.
+          </p>
+          <div class="class-pills" id="classPills">
+            <!-- diisi dinamis dari JS -->
+          </div>
+          <div class="chart-wrap" style="margin-top:14px;">
+            <div class="chart-title">DISTRIBUSI LABEL</div>
+            <canvas id="labelChart" height="60"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ Step 3: Split Dataset ══ -->
+      <div class="step s3">
+        <div class="step-line">
+          <div class="step-circle">📊</div>
+          <div class="step-connector"></div>
+        </div>
+        <div class="step-card">
+          <div class="step-title">
+            Split Dataset
+            <span class="step-badge badge-s3">STEP 3</span>
+          </div>
+          <p class="step-desc">
+            Dataset dibagi menjadi tiga bagian: <strong>Train</strong> untuk melatih model,
+            <strong>Validation</strong> untuk memantau overfitting selama training,
+            dan <strong>Test</strong> untuk evaluasi akhir model.
+          </p>
+          <div class="stat-row" style="margin-bottom:12px;">
+            <div class="stat-pill">🏋 Train <strong id="splitTrain">–</strong> gambar</div>
+            <div class="stat-pill">✅ Valid <strong id="splitValid">–</strong> gambar</div>
+            <div class="stat-pill">🧪 Test <strong id="splitTest">–</strong> gambar</div>
+          </div>
+          <div class="chart-wrap">
+            <div class="chart-title">PROPORSI SPLIT</div>
+            <canvas id="splitChart" height="60"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ Step 4: Training YOLOv8 ══ -->
+      <div class="step s4">
+        <div class="step-line">
+          <div class="step-circle">🧠</div>
+          <div class="step-connector"></div>
+        </div>
+        <div class="step-card">
+          <div class="step-title">
+            Training YOLOv8
+            <span class="step-badge badge-s4">STEP 4</span>
+          </div>
+          <p class="step-desc">
+            Model YOLOv8 dilatih menggunakan dataset yang sudah dianotasi. Proses training
+            mengoptimalkan bobot jaringan saraf tiruan melalui backpropagation untuk meminimalkan
+            loss deteksi. Menggunakan <strong>Apple MPS (M2 GPU)</strong> untuk akselerasi.
+          </p>
+          <!-- Arsitektur singkat -->
+          <div class="arch">
+            <div class="arch-block" style="border-color:#eab308;">📷 Input<br><small style="color:var(--muted)">640×640</small></div>
+            <span class="arch-arrow">→</span>
+            <div class="arch-block">🔷 Backbone<br><small style="color:var(--muted)">CSPDarknet</small></div>
+            <span class="arch-arrow">→</span>
+            <div class="arch-block">🔶 Neck<br><small style="color:var(--muted)">PANet FPN</small></div>
+            <span class="arch-arrow">→</span>
+            <div class="arch-block">🔸 Head<br><small style="color:var(--muted)">Detection</small></div>
+            <span class="arch-arrow">→</span>
+            <div class="arch-block" style="border-color:#eab308;">📦 Output<br><small style="color:var(--muted)">BBox + Class</small></div>
+          </div>
+          <div class="chart-wrap" style="margin-top:14px;">
+            <div class="chart-title">TRAINING & VALIDATION LOSS PER EPOCH</div>
+            <canvas id="lossChart" height="100"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ Step 5: Evaluasi Model ══ -->
+      <div class="step s5">
+        <div class="step-line">
+          <div class="step-circle">📈</div>
+          <div class="step-connector"></div>
+        </div>
+        <div class="step-card">
+          <div class="step-title">
+            Evaluasi Model
+            <span class="step-badge badge-s5">STEP 5</span>
+          </div>
+          <p class="step-desc">
+            Performa model diukur menggunakan metrik standar object detection:
+            <strong>Precision</strong> (ketepatan prediksi), <strong>Recall</strong> (kelengkapan deteksi),
+            dan <strong>mAP</strong> (mean Average Precision) pada IoU threshold 50% dan 50–95%.
+          </p>
+          <div class="metric-grid">
+            <div class="metric-card good">
+              <div class="metric-val" id="mPrecision">–</div>
+              <div class="metric-key">PRECISION</div>
+            </div>
+            <div class="metric-card good">
+              <div class="metric-val" id="mRecall">–</div>
+              <div class="metric-key">RECALL</div>
+            </div>
+            <div class="metric-card good">
+              <div class="metric-val" id="mMap50">–</div>
+              <div class="metric-key">mAP@50</div>
+            </div>
+            <div class="metric-card ok">
+              <div class="metric-val" id="mMap95">–</div>
+              <div class="metric-key">mAP@50-95</div>
+            </div>
+          </div>
+          <div class="prog-bar-wrap" style="margin-top:16px;" id="metricBars"></div>
+          <div class="chart-wrap" style="margin-top:4px;">
+            <div class="chart-title">mAP50 PER EPOCH</div>
+            <canvas id="mapChart" height="90"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ Step 6: Deteksi Real-time ══ -->
+      <div class="step s6">
+        <div class="step-line">
+          <div class="step-circle">🔍</div>
+          <div class="step-connector"></div>
+        </div>
+        <div class="step-card">
+          <div class="step-title">
+            Deteksi Real-time
+            <span class="step-badge badge-s6">STEP 6</span>
+          </div>
+          <p class="step-desc">
+            Model yang sudah dilatih digunakan untuk inferensi real-time melalui kamera laptop
+            maupun <strong>kamera iPhone</strong> (via <em>Continuity Camera</em> — terhubung ke Mac menggunakan Bluetooth).
+            Setiap frame diproses YOLOv8 menghasilkan bounding box, label kelas, dan confidence score.
+            Sistem dilengkapi <strong>alert notification</strong> — alarm berbunyi dan screenshot otomatis tersimpan
+            saat objek yang dikonfigurasi terdeteksi.
+          </p>
+          <div class="output-demo">
+            <div class="demo-box" style="background:rgba(249,115,22,0.15); border:1px solid #f97316; color:#f97316;">
+              📱 Handphone · 95%
+            </div>
+            <div class="demo-box" style="background:rgba(56,189,248,0.15); border:1px solid #38bdf8; color:#38bdf8;">
+              ⌚ Jam · 88%
+            </div>
+            <div class="demo-box" style="background:rgba(74,222,128,0.15); border:1px solid #4ade80; color:#4ade80;">
+              👤 Orang · 92%
+            </div>
+            <div class="demo-box" style="background:rgba(239,68,68,0.15); border:1px solid #ef4444; color:#ef4444; animation:pulse 1s infinite;">
+              🔔 ALARM → Handphone Terdeteksi!
+            </div>
+          </div>
+          <div style="display:flex; gap:10px; margin-top:14px; flex-wrap:wrap;">
+            <div class="stat-pill">⚡ Akselerasi <strong>Apple MPS</strong></div>
+            <div class="stat-pill">🎯 Threshold <strong>0.85 conf</strong></div>
+            <div class="stat-pill">📐 Input Size <strong>640×640</strong></div>
+            <div class="stat-pill">🖥 Target <strong>~30 FPS</strong></div>
+          </div>
+          <div style="margin-top:16px; display:flex; gap:10px;">
+            <a href="/" class="btn btn-red">🔴 Buka Monitor</a>
+            <a href="/train" class="btn btn-ghost">⚙️ Buka Training</a>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /pipeline -->
+  </div><!-- /flow-wrap -->
+
+  <!-- ── Footer ──────────────────────────────────────────── -->
+  <footer class="app-footer">
+    <div class="footer-brand">
+      Computer Vision Laboratory
+    </div>
+    <div class="footer-copy">
+      © 2025 Muhammad Al Farisy &nbsp;·&nbsp; Powered by Muhammad Al Farisy
+    </div>
+    <div class="footer-nav">
+      <a href="/">🖥 Monitor</a>
+      <a href="/train">⚙️ Training</a>
+      <a href="/evaluate">📊 Evaluasi</a>
+      <a href="/flow">🔄 Alur Kerja</a>
+    </div>
+  </footer>
+
+</div>
+
+<style>
+@keyframes pulse {
+  0%,100% { opacity:1; } 50% { opacity:0.6; }
+}
+</style>
+
+<script>
+// Clock
+setInterval(() => {
+  document.getElementById('clock').textContent =
+    new Date().toLocaleTimeString('id-ID', {hour12:false});
+}, 1000);
+
+// ── Load semua data ────────────────────────────────────────
+async function loadAll() {
+  const [infoRes, metricsRes] = await Promise.all([
+    fetch('/train/dataset-info'),
+    fetch('/flow/metrics')
+  ]);
+  const info    = await infoRes.json();
+  const metrics = await metricsRes.json();
+
+  // Step 1 — total gambar
+  const total = (info.splits.train||0) + (info.splits.valid||0) + (info.splits.test||0);
+  document.getElementById('totalImg').textContent = total.toLocaleString();
+
+  // Step 2 — label counts dinamis
+  const PILL_COLORS = ['#f97316','#38bdf8','#4ade80','#a78bfa','#fb7185','#fbbf24'];
+  const classPills  = document.getElementById('classPills');
+  classPills.innerHTML = Object.entries(info.classes).map(([name, cnt], i) => {
+    const c = PILL_COLORS[i % PILL_COLORS.length];
+    return `<span style="display:flex;align-items:center;gap:6px;padding:6px 14px;border-radius:20px;font-size:0.82rem;font-weight:600;border:1px solid ${c};background:${c}18;color:${c};">
+      ${name} <strong>${(cnt||0).toLocaleString()}</strong>
+    </span>`;
+  }).join('');
+
+  // Step 3 — splits
+  document.getElementById('splitTrain').textContent = (info.splits.train||0).toLocaleString();
+  document.getElementById('splitValid').textContent = (info.splits.valid||0).toLocaleString();
+  document.getElementById('splitTest').textContent  = (info.splits.test||0).toLocaleString();
+
+  // Step 5 — best metrics (last epoch)
+  const best = metrics[metrics.length - 1];
+  document.getElementById('mPrecision').textContent = best.precision + '%';
+  document.getElementById('mRecall').textContent    = best.recall    + '%';
+  document.getElementById('mMap50').textContent     = best.mAP50     + '%';
+  document.getElementById('mMap95').textContent     = best.mAP50_95  + '%';
+
+  // Progress bars
+  const bars = [
+    { label:'Precision', val: best.precision, color:'#22c55e' },
+    { label:'Recall',    val: best.recall,    color:'#22c55e' },
+    { label:'mAP@50',    val: best.mAP50,     color:'#38bdf8' },
+    { label:'mAP@50-95', val: best.mAP50_95,  color:'#eab308' },
+  ];
+  document.getElementById('metricBars').innerHTML = bars.map(b => `
+    <div class="prog-bar-row">
+      <span class="prog-bar-label">${b.label}</span>
+      <div class="prog-bar-track">
+        <div class="prog-bar-fill" style="width:${b.val}%; background:${b.color};"></div>
+      </div>
+      <span class="prog-bar-val" style="color:${b.color};">${b.val}%</span>
+    </div>`).join('');
+
+  drawCharts(info, metrics);
+}
+
+// ── Draw Charts ────────────────────────────────────────────
+function drawCharts(info, metrics) {
+  const epochs = metrics.map(m => 'Ep ' + m.epoch);
+
+  // Label distribution bar chart — dinamis
+  const CHART_COLORS = ['#f97316','#38bdf8','#4ade80','#a78bfa','#fb7185','#fbbf24'];
+  const clsEntries = Object.entries(info.classes);
+  drawBarChart('labelChart',
+    clsEntries.map(([n]) => n),
+    clsEntries.map(([, v]) => v || 0),
+    clsEntries.map((_, i) => CHART_COLORS[i % CHART_COLORS.length])
+  );
+
+  // Split doughnut-style bar
+  const splits = [info.splits.train||0, info.splits.valid||0, info.splits.test||0];
+  drawBarChart('splitChart',
+    ['Train', 'Validasi', 'Test'],
+    splits,
+    ['#2563eb', '#a855f7', '#22c55e']
+  );
+
+  // Loss chart
+  drawLineChart('lossChart', epochs, [
+    { label: 'Train Loss', data: metrics.map(m => m.train_loss), color: '#eab308' },
+    { label: 'Val Loss',   data: metrics.map(m => m.val_loss),   color: '#ef4444' },
+  ]);
+
+  // mAP chart
+  drawLineChart('mapChart', epochs, [
+    { label: 'mAP@50',    data: metrics.map(m => m.mAP50),    color: '#22c55e' },
+    { label: 'Precision', data: metrics.map(m => m.precision), color: '#38bdf8' },
+    { label: 'Recall',    data: metrics.map(m => m.recall),    color: '#a855f7' },
+  ]);
+}
+
+function drawBarChart(id, labels, data, colors) {
+  const canvas = document.getElementById(id);
+  const ctx    = canvas.getContext('2d');
+  const W = canvas.offsetWidth || 600;
+  const H = parseInt(canvas.getAttribute('height')) || 80;
+  canvas.width = W; canvas.height = H;
+
+  const max   = Math.max(...data) * 1.1 || 1;
+  const bw    = (W - 40) / labels.length;
+  const gap   = bw * 0.2;
+
+  ctx.clearRect(0, 0, W, H);
+  labels.forEach((lbl, i) => {
+    const x  = 20 + i * bw + gap / 2;
+    const bh = ((data[i] / max) * (H - 28));
+    const y  = H - 20 - bh;
+    ctx.fillStyle = colors[i] + '33';
+    ctx.fillRect(x, y, bw - gap, bh);
+    ctx.fillStyle = colors[i];
+    ctx.fillRect(x, y, bw - gap, 3);
+
+    ctx.fillStyle = '#64748b';
+    ctx.font = '10px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.fillText(lbl, x + (bw - gap) / 2, H - 6);
+
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 11px Segoe UI';
+    ctx.fillText(data[i].toLocaleString(), x + (bw - gap) / 2, y - 4);
+  });
+}
+
+function drawLineChart(id, labels, datasets) {
+  const canvas = document.getElementById(id);
+  const ctx    = canvas.getContext('2d');
+  const W = canvas.offsetWidth || 600;
+  const H = parseInt(canvas.getAttribute('height')) || 100;
+  canvas.width = W; canvas.height = H;
+
+  const pad  = { top: 10, right: 20, bottom: 24, left: 36 };
+  const iW   = W - pad.left - pad.right;
+  const iH   = H - pad.top  - pad.bottom;
+
+  const allVals = datasets.flatMap(d => d.data);
+  const minV = Math.min(...allVals) * 0.9;
+  const maxV = Math.max(...allVals) * 1.05;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Grid lines
+  ctx.strokeStyle = '#1e2330';
+  ctx.lineWidth = 1;
+  [0, 0.25, 0.5, 0.75, 1].forEach(t => {
+    const y = pad.top + iH * (1 - t);
+    ctx.beginPath();
+    ctx.moveTo(pad.left, y);
+    ctx.lineTo(pad.left + iW, y);
+    ctx.stroke();
+    const val = minV + (maxV - minV) * t;
+    ctx.fillStyle = '#475569';
+    ctx.font = '9px Segoe UI';
+    ctx.textAlign = 'right';
+    ctx.fillText(val.toFixed(1), pad.left - 4, y + 3);
+  });
+
+  // X labels
+  ctx.fillStyle = '#475569';
+  ctx.font = '9px Segoe UI';
+  ctx.textAlign = 'center';
+  labels.forEach((lbl, i) => {
+    const x = pad.left + (i / (labels.length - 1)) * iW;
+    ctx.fillText(lbl, x, H - 6);
+  });
+
+  // Lines
+  datasets.forEach(ds => {
+    const pts = ds.data.map((v, i) => ({
+      x: pad.left + (i / (labels.length - 1 || 1)) * iW,
+      y: pad.top  + iH * (1 - (v - minV) / (maxV - minV || 1))
+    }));
+
+    // Area fill
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pad.top + iH);
+    pts.forEach(p => ctx.lineTo(p.x, p.y));
+    ctx.lineTo(pts[pts.length-1].x, pad.top + iH);
+    ctx.closePath();
+    ctx.fillStyle = ds.color + '18';
+    ctx.fill();
+
+    // Line
+    ctx.beginPath();
+    pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+    ctx.strokeStyle = ds.color;
+    ctx.lineWidth   = 2;
+    ctx.lineJoin    = 'round';
+    ctx.stroke();
+
+    // Dots
+    pts.forEach(p => {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 3, 0, Math.PI*2);
+      ctx.fillStyle = ds.color;
+      ctx.fill();
+    });
+  });
+
+  // Legend
+  let lx = pad.left;
+  datasets.forEach(ds => {
+    ctx.fillStyle = ds.color;
+    ctx.fillRect(lx, 2, 12, 3);
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '9px Segoe UI';
+    ctx.textAlign = 'left';
+    ctx.fillText(ds.label, lx + 16, 8);
+    lx += ctx.measureText(ds.label).width + 36;
+  });
+}
+
+loadAll();
+</script>
+</body>
+</html>

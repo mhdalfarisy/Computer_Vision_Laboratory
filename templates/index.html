@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Computer Vision Laboratory</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+</head>
+<body>
+<div class="app">
+
+  <!-- ── Top Bar ─────────────────────────────────────────── -->
+  <header class="topbar">
+    <div class="topbar-brand">
+      <img src="{{ url_for('static', filename='images/profile.jpg') }}" alt="Faris"
+           style="width:32px; height:32px; border-radius:50%; object-fit:cover; object-position:center top;
+                  border:2px solid rgba(99,102,241,0.6); box-shadow:0 0 8px rgba(99,102,241,0.5);" />
+      Computer Vision Laboratory
+    </div>
+    <div class="topbar-center">
+      <span class="live-dot"></span> Live Monitoring
+    </div>
+    <div class="topbar-right">
+      <a href="/flow"     class="btn btn-ghost" style="padding:5px 12px; font-size:0.78rem;">🔄 Alur Kerja</a>
+      <a href="/evaluate" class="btn btn-ghost" style="padding:5px 12px; font-size:0.78rem;">📊 Evaluasi</a>
+      <a href="/train"    class="btn btn-ghost" style="padding:5px 12px; font-size:0.78rem;">⚙️ Training</a>
+      <span id="clock">--:--:--</span>
+      <a href="/logout" class="btn btn-ghost" style="padding:5px 12px; font-size:0.78rem; border-color:rgba(239,68,68,0.4); color:#fca5a5;" title="Logout">🚪 Keluar</a>
+    </div>
+  </header>
+
+  <!-- ── Tabs ────────────────────────────────────────────── -->
+  <div class="tabs">
+    <button class="tab-btn" data-tab="webcam">📷 Kamera Real-time</button>
+    <button class="tab-btn active" data-tab="upload">🖼 Upload Gambar</button>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <!-- Tab Webcam                                             -->
+  <!-- ══════════════════════════════════════════════════════ -->
+  <div class="tab-content" id="tab-webcam">
+    <div class="monitor-layout">
+
+      <!-- Feed utama -->
+      <div class="feed-panel">
+        <video id="webcamVideo" autoplay playsinline style="display:none"></video>
+        <canvas id="webcamCanvas" style="display:none"></canvas>
+        <img id="webcamResult" alt="Result" style="display:none" />
+
+        <!-- Placeholder -->
+        <div class="feed-placeholder" id="feedPlaceholder">
+          <div class="ph-icon">📷</div>
+          <p>Kamera belum aktif</p>
+        </div>
+
+        <!-- Top-left badges -->
+        <div class="feed-overlay-tl" id="feedBadges" style="display:none">
+          <span class="ov-badge"><span class="dot"></span> LIVE</span>
+          <span class="ov-badge" id="fpsBadge">-- FPS</span>
+        </div>
+
+        <!-- Alarm overlay -->
+        <div class="alarm-overlay" id="alarmOverlay">
+          <div class="alarm-banner">
+            <span class="ab-icon">⚠️</span>
+            PERINGATAN — HANDPHONE TERDETEKSI!
+          </div>
+        </div>
+
+        <!-- Controls bottom -->
+        <div class="feed-controls">
+          <select id="cameraSelect" style="display:none"></select>
+          <button class="btn btn-blue"  id="startWebcam">▶ Mulai Kamera</button>
+          <button class="btn btn-ghost" id="flipCamera"   style="display:none">🔄 Balik Kamera</button>
+          <button class="btn btn-green" id="toggleDetect" style="display:none">⚡ Mulai Deteksi</button>
+          <button class="btn btn-red"   id="stopWebcam"   style="display:none">⏹ Stop</button>
+          <button class="btn btn-ghost" id="iphoneBtn"
+            style="border-color:rgba(34,211,238,0.5);color:#22d3ee;"
+            onclick="toggleIphonePanel()">📱 Switch to iPhone</button>
+        </div>
+
+        <!-- ── iPhone Bluetooth Panel ── -->
+        <div id="iphonePanel" style="display:none; padding:16px; border-top:1px solid var(--border);
+             background:rgba(34,211,238,0.04);">
+          <div style="font-size:0.72rem; color:var(--muted); letter-spacing:0.06em;
+                      font-weight:700; margin-bottom:12px;">🔵 HUBUNGKAN iPhone via BLUETOOTH (Continuity Camera)</div>
+          <div style="display:grid; grid-template-columns:auto 1fr; gap:16px; align-items:start;">
+            <!-- Steps -->
+            <div style="display:flex; flex-direction:column; gap:6px;">
+              <div style="display:flex;align-items:center;gap:10px;">
+                <span style="width:24px;height:24px;border-radius:50%;background:var(--grad-primary);
+                             display:flex;align-items:center;justify-content:center;font-size:0.72rem;
+                             font-weight:700;flex-shrink:0;">1</span>
+                <span style="font-size:0.78rem;color:var(--text);">iPhone & Mac login <strong>Apple ID yang sama</strong></span>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;">
+                <span style="width:24px;height:24px;border-radius:50%;background:var(--grad-primary);
+                             display:flex;align-items:center;justify-content:center;font-size:0.72rem;
+                             font-weight:700;flex-shrink:0;">2</span>
+                <span style="font-size:0.78rem;color:var(--text);">Aktifkan <strong>Bluetooth</strong> & <strong>WiFi</strong> di keduanya</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;">
+                <span style="width:24px;height:24px;border-radius:50%;background:var(--grad-primary);
+                             display:flex;align-items:center;justify-content:center;font-size:0.72rem;
+                             font-weight:700;flex-shrink:0;">3</span>
+                <span style="font-size:0.78rem;color:var(--text);">System Settings → General → AirPlay & Handoff → <strong>Continuity Camera ON</strong></span>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;">
+                <span style="width:24px;height:24px;border-radius:50%;background:var(--grad-primary);
+                             display:flex;align-items:center;justify-content:center;font-size:0.72rem;
+                             font-weight:700;flex-shrink:0;">4</span>
+                <span style="font-size:0.78rem;color:var(--text);">Dekatkan iPhone ke Mac, lalu klik <strong>"Mulai Kamera"</strong></span>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;">
+                <span style="width:24px;height:24px;border-radius:50%;background:linear-gradient(135deg,#10b981,#22d3ee);
+                             display:flex;align-items:center;justify-content:center;font-size:0.72rem;
+                             font-weight:700;flex-shrink:0;">5</span>
+                <span style="font-size:0.78rem;color:#22d3ee;">Pilih <strong>📱 Switch to iPhone</strong> dari dropdown kamera</span>
+              </div>
+            </div>
+            <!-- Info box -->
+            <div style="padding:12px 14px; border-radius:10px;
+                        background:rgba(99,102,241,0.1); border:1px solid rgba(99,102,241,0.25);">
+              <div style="font-size:0.72rem; color:#a5b4fc; font-weight:600; margin-bottom:6px;">💡 Info</div>
+              <div style="font-size:0.7rem; color:var(--text-dim); line-height:1.6;">
+                Continuity Camera menggunakan <strong>Bluetooth</strong> untuk pairing awal,
+                lalu <strong>WiFi</strong> untuk streaming video beresolusi tinggi.<br><br>
+                iPhone yang terdeteksi akan otomatis muncul sebagai
+                <span style="color:#22d3ee;">📱 Switch to iPhone</span> di dropdown kamera.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sidebar -->
+      <div class="side-panel">
+        <!-- Info model aktif -->
+        <div class="side-section" id="modelInfoSection" style="background:rgba(37,99,235,0.06); border-bottom:1px solid var(--border);">
+          <div class="side-label">Model Aktif</div>
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <span id="modelNameBadge" style="font-size:0.78rem; font-weight:600; color:var(--text);">–</span>
+            <span id="modelTypeBadge" style="font-size:0.65rem; padding:2px 8px; border-radius:20px; background:rgba(37,99,235,0.2); color:#60a5fa;">–</span>
+          </div>
+          <div id="alertClassesBadge" style="margin-top:6px; font-size:0.7rem; color:#ef4444;"></div>
+        </div>
+
+        <div class="side-section">
+          <div class="side-label">Ringkasan Deteksi</div>
+          <!-- stat-grid diisi dinamis oleh JS setelah load model info -->
+          <div class="stat-grid" id="statGrid">
+            <div class="stat-card alert" id="statAlert" style="display:none; grid-column: 1 / -1;">
+              <div class="stat-val">⚠</div>
+              <div class="stat-key">🚨 Pelanggaran</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="side-label" style="padding:14px 16px 0">Objek Terdeteksi</div>
+        <div class="det-list" id="webcamDets">
+          <div class="det-empty">
+            <span>🔍</span>
+            <span>Belum ada deteksi</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <!-- Tab Upload                                             -->
+  <!-- ══════════════════════════════════════════════════════ -->
+  <div class="tab-content active" id="tab-upload">
+    <div class="upload-layout">
+
+      <!-- Panel kiri: input -->
+      <div class="upload-panel">
+        <div class="panel-header">Gambar Asli</div>
+        <input type="file" id="fileInput" accept="image/*" hidden />
+
+        <div class="upload-drop" id="dropZone">
+          <div class="ud-icon">📂</div>
+          <p>Klik atau drag &amp; drop gambar</p>
+          <span>PNG, JPG, JPEG</span>
+          <button class="btn btn-blue" onclick="document.getElementById('fileInput').click()">Pilih Gambar</button>
+        </div>
+
+        <div class="img-preview" id="origPreview" style="display:none">
+          <img id="originalImg" src="" alt="Original" />
+        </div>
+      </div>
+
+      <!-- Panel kanan: hasil -->
+      <div class="upload-panel">
+        <div class="panel-header">
+          Hasil Deteksi
+          <span id="uploadAlertBadge" style="display:none; padding:2px 8px; background:#ef4444; color:#fff; border-radius:4px; font-size:0.68rem;">⚠ PELANGGARAN</span>
+        </div>
+        <div class="img-preview" id="resultPreview">
+          <div class="det-empty"><span>🔍</span><span>Belum diproses</span></div>
+        </div>
+      </div>
+
+      <!-- Bottom actions -->
+      <div class="upload-actions">
+        <button class="btn btn-blue" id="detectBtn" disabled>⚡ Deteksi Objek</button>
+        <button class="btn btn-ghost" id="resetBtn" style="display:none">↩ Reset</button>
+        <div id="uploadLoading" style="display:none; display:flex; align-items:center; gap:8px; color:#94a3b8; font-size:0.82rem;">
+          <div class="spinner"></div> Memproses...
+        </div>
+        <div style="flex:1"></div>
+        <div id="uploadDets" class="det-list" style="max-height:60px; flex:2; overflow:hidden; padding:0; gap:6px; flex-direction:row; flex-wrap:wrap; align-items:center;"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Footer ─────────────────────────────────────────────── -->
+<footer class="app-footer">
+  <div class="footer-brand">
+    Computer Vision Laboratory
+  </div>
+  <div class="footer-copy">
+    © 2025 Muhammad Al Farisy &nbsp;·&nbsp; Powered by Muhammad Al Farisy
+  </div>
+  <div class="footer-nav">
+    <a href="/">🖥 Monitor</a>
+    <a href="/train">⚙️ Training</a>
+    <a href="/evaluate">📊 Evaluasi</a>
+    <a href="/flow">🔄 Alur Kerja</a>
+  </div>
+</footer>
+
+<script>
+// ── Clock ──────────────────────────────────────────────────
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent =
+    now.toLocaleTimeString('id-ID', { hour12: false });
+}
+updateClock();
+setInterval(updateClock, 1000);
+
+// ── Tab switching ──────────────────────────────────────────
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
+// ── Upload ─────────────────────────────────────────────────
+const fileInput    = document.getElementById('fileInput');
+const dropZone     = document.getElementById('dropZone');
+const origPreview  = document.getElementById('origPreview');
+const originalImg  = document.getElementById('originalImg');
+const resultPreview= document.getElementById('resultPreview');
+const detectBtn    = document.getElementById('detectBtn');
+const resetBtn     = document.getElementById('resetBtn');
+const uploadLoading= document.getElementById('uploadLoading');
+const uploadDets   = document.getElementById('uploadDets');
+const uploadAlertBadge = document.getElementById('uploadAlertBadge');
+
+let selectedFile = null;
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('drag-over'); handleFile(e.dataTransfer.files[0]); });
+fileInput.addEventListener('change', e => handleFile(e.target.files[0]));
+
+function handleFile(file) {
+  if (!file || !file.type.startsWith('image/')) return;
+  selectedFile = file;
+  originalImg.src = URL.createObjectURL(file);
+  dropZone.style.display = 'none';
+  origPreview.style.display = 'flex';
+  detectBtn.disabled = false;
+  resetBtn.style.display = 'inline-flex';
+}
+
+detectBtn.addEventListener('click', async () => {
+  if (!selectedFile) return;
+  uploadLoading.style.display = 'flex';
+  detectBtn.disabled = true;
+
+  const formData = new FormData();
+  formData.append('image', selectedFile);
+
+  try {
+    const res  = await fetch('/predict', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (data.error) { alert(data.error); return; }
+
+    resultPreview.innerHTML = `<img src="data:image/jpeg;base64,${data.image}" alt="Result" style="max-width:100%;max-height:100%;object-fit:contain;" />`;
+    renderUploadDets(data.detections);
+    uploadAlertBadge.style.display = data.alarm ? 'inline-block' : 'none';
+    if (data.alarm) playAlarm();
+  } catch { alert('Terjadi kesalahan'); }
+  finally {
+    uploadLoading.style.display = 'none';
+    detectBtn.disabled = false;
+  }
+});
+
+resetBtn.addEventListener('click', () => {
+  selectedFile = null;
+  fileInput.value = '';
+  originalImg.src = '';
+  origPreview.style.display = 'none';
+  dropZone.style.display = 'flex';
+  resultPreview.innerHTML = '<div class="det-empty"><span>🔍</span><span>Belum diproses</span></div>';
+  uploadDets.innerHTML = '';
+  detectBtn.disabled = true;
+  resetBtn.style.display = 'none';
+  uploadAlertBadge.style.display = 'none';
+});
+
+
+// ── Webcam ─────────────────────────────────────────────────
+const video        = document.getElementById('webcamVideo');
+const canvas       = document.getElementById('webcamCanvas');
+const webcamResult = document.getElementById('webcamResult');
+const startBtn     = document.getElementById('startWebcam');
+const toggleBtn    = document.getElementById('toggleDetect');
+const stopBtn      = document.getElementById('stopWebcam');
+const flipBtn      = document.getElementById('flipCamera');
+const cameraSelect = document.getElementById('cameraSelect');
+const alarmOverlay = document.getElementById('alarmOverlay');
+const feedBadges   = document.getElementById('feedBadges');
+const placeholder  = document.getElementById('feedPlaceholder');
+const webcamDets   = document.getElementById('webcamDets');
+
+let stream       = null;
+let isDetecting  = false;
+let facingMode   = 'environment';
+let alarmCooldown = false;
+let frameCount   = 0;
+let fpsTimer     = Date.now();
+
+// FPS counter
+function updateFPS() {
+  const now = Date.now();
+  const elapsed = (now - fpsTimer) / 1000;
+  if (elapsed >= 1) {
+    document.getElementById('fpsBadge').textContent = Math.round(frameCount / elapsed) + ' FPS';
+    frameCount = 0;
+    fpsTimer = now;
+  }
+}
+
+// Alarm sound (Web Audio API)
+function playAlarm() {
+  if (alarmCooldown) return;
+  alarmCooldown = true;
+  setTimeout(() => alarmCooldown = false, 3000);
+
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  [880, 660, 880, 660].forEach((freq, i) => {
+    const osc  = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = freq;
+    osc.type = 'square';
+    gain.gain.setValueAtTime(0.3, ctx.currentTime + i * 0.15);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.15 + 0.14);
+    osc.start(ctx.currentTime + i * 0.15);
+    osc.stop(ctx.currentTime  + i * 0.15 + 0.14);
+  });
+}
+
+let iphoneDevices = [];   // [{deviceId, label, isFront}]
+let iphoneCamIdx  = 0;    // index aktif di iphoneDevices
+
+async function loadCameras() {
+  await navigator.mediaDevices.getUserMedia({ video: true });
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const cameras = devices.filter(d => d.kind === 'videoinput');
+
+  // Kumpulkan semua kamera iPhone/Continuity
+  iphoneDevices = cameras
+    .filter(c => /iphone|continuity|apple/i.test(c.label))
+    .map(c => ({
+      deviceId: c.deviceId,
+      label: c.label,
+      isFront: /front|depan|selfie|facetime/i.test(c.label)
+    }));
+
+  cameraSelect.innerHTML = cameras.map((c, i) => {
+    const rawLbl = c.label || 'Kamera ' + (i + 1);
+    const isIph  = /iphone|continuity|apple/i.test(rawLbl);
+    let lbl;
+    if (isIph) {
+      const isFront = /front|depan|selfie|facetime/i.test(rawLbl);
+      lbl = isFront ? 'iPhone Kamera Depan' : 'iPhone Kamera Belakang';
+    } else {
+      lbl = rawLbl.replace(/\s*\([^)]*\)\s*$/, '').trim() || rawLbl;
+    }
+    return `<option value="${c.deviceId}">${isIph ? '📱 ' : '📷 '}${lbl}</option>`;
+  }).join('');
+
+  cameraSelect.style.display = cameras.length > 1 ? 'inline-block' : 'none';
+
+  // Auto-select iPhone kamera belakang dulu
+  const backIdx = cameras.findIndex(c =>
+    /iphone|continuity|apple/i.test(c.label) && !/front|depan|selfie/i.test(c.label)
+  );
+  const iphIdx = backIdx >= 0 ? backIdx :
+    cameras.findIndex(c => /iphone|continuity|apple/i.test(c.label));
+  if (iphIdx >= 0) cameraSelect.selectedIndex = iphIdx;
+
+  // Update teks tombol flip sesuai jumlah kamera iPhone
+  if (iphoneDevices.length > 1) {
+    flipBtn.textContent = '🔄 Balik Kamera iPhone';
+  } else {
+    flipBtn.textContent = '🔄 Balik Kamera';
+  }
+}
+
+// ── iPhone Bluetooth Panel ─────────────────────────────────
+function toggleIphonePanel() {
+  const panel = document.getElementById('iphonePanel');
+  const btn   = document.getElementById('iphoneBtn');
+  const show  = panel.style.display === 'none';
+  panel.style.display = show ? 'block' : 'none';
+  btn.style.background = show ? 'rgba(34,211,238,0.12)' : '';
+}
+
+async function startCamera() {
+  const deviceId = cameraSelect.value;
+  const constraints = { video: deviceId ? { deviceId: { exact: deviceId }, facingMode: { ideal: facingMode } } : { facingMode } };
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = await navigator.mediaDevices.getUserMedia(constraints);
+  video.srcObject = stream;
+}
+
+startBtn.addEventListener('click', async () => {
+  try {
+    await loadCameras();
+    await startCamera();
+    placeholder.style.display = 'none';
+    video.style.display = 'block';
+    feedBadges.style.display = 'flex';
+    startBtn.style.display  = 'none';
+    flipBtn.style.display   = 'inline-flex';
+    toggleBtn.style.display = 'inline-flex';
+    stopBtn.style.display   = 'inline-flex';
+  } catch { alert('Tidak dapat mengakses kamera'); }
+});
+
+flipBtn.addEventListener('click', async () => {
+  if (iphoneDevices.length > 1) {
+    // Switch antar kamera iPhone (depan ↔ belakang)
+    iphoneCamIdx = (iphoneCamIdx + 1) % iphoneDevices.length;
+    const nextCam = iphoneDevices[iphoneCamIdx];
+    cameraSelect.value = nextCam.deviceId;
+    flipBtn.textContent = nextCam.isFront ? '🔄 Ke Kamera Belakang' : '🔄 Ke Kamera Depan';
+  } else {
+    // Fallback: toggle facingMode biasa
+    facingMode = facingMode === 'environment' ? 'user' : 'environment';
+    flipBtn.textContent = facingMode === 'environment' ? '🔄 Balik Kamera' : '🔄 Kamera Belakang';
+  }
+  await startCamera();
+});
+
+cameraSelect.addEventListener('change', async () => {
+  if (!stream) return;
+  await startCamera();
+});
+
+toggleBtn.addEventListener('click', () => {
+  if (!isDetecting) {
+    isDetecting = true;
+    toggleBtn.textContent = '⏸ Stop Deteksi';
+    toggleBtn.classList.replace('btn-green', 'btn-red');
+    video.style.display = 'none';
+    webcamResult.style.display = 'block';
+    captureAndDetect();
+  } else {
+    isDetecting = false;
+    toggleBtn.textContent = '⚡ Mulai Deteksi';
+    toggleBtn.classList.replace('btn-red', 'btn-green');
+    video.style.display = 'block';
+    webcamResult.style.display = 'none';
+    alarmOverlay.classList.remove('active');
+    resetStats();
+  }
+});
+
+stopBtn.addEventListener('click', () => {
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  isDetecting = false;
+  stream = null;
+  video.srcObject = null;
+  video.style.display = 'none';
+  webcamResult.style.display = 'none';
+  placeholder.style.display = 'flex';
+  feedBadges.style.display = 'none';
+  startBtn.style.display  = 'inline-flex';
+  flipBtn.style.display   = 'none';
+  toggleBtn.style.display = 'none';
+  stopBtn.style.display   = 'none';
+  toggleBtn.textContent = '⚡ Mulai Deteksi';
+  toggleBtn.classList.remove('btn-red');
+  toggleBtn.classList.add('btn-green');
+  alarmOverlay.classList.remove('active');
+  webcamDets.innerHTML = '<div class="det-empty"><span>🔍</span><span>Belum ada deteksi</span></div>';
+  facingMode = 'environment';
+  flipBtn.textContent = '🔄 Balik Kamera';
+  resetStats();
+});
+
+async function captureAndDetect() {
+  if (!isDetecting) return;
+
+  const MAX_W = 640;
+  const scale = Math.min(1, MAX_W / video.videoWidth);
+  canvas.width  = Math.round(video.videoWidth  * scale);
+  canvas.height = Math.round(video.videoHeight * scale);
+  canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+  const frame = canvas.toDataURL('image/jpeg', 0.7);
+
+  try {
+    const res  = await fetch('/predict_frame', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ frame })
+    });
+    const data = await res.json();
+    if (data.image) {
+      webcamResult.src = 'data:image/jpeg;base64,' + data.image;
+      renderWebcamDets(data.detections);
+      updateStats(data.detections);
+
+      if (data.alarm) {
+        alarmOverlay.classList.add('active');
+        playAlarm();
+      } else {
+        alarmOverlay.classList.remove('active');
+      }
+
+      frameCount++;
+      updateFPS();
+    }
+  } catch {}
+
+  if (isDetecting) setTimeout(captureAndDetect, 33); // ~30 fps
+}
+
+// ── Model Info & Dynamic Classes ──────────────────────────
+let modelClasses = [];
+let modelIcons   = [];
+let modelAlerts  = [];
+const PALETTE = ['#f97316','#38bdf8','#4ade80','#a78bfa','#fb7185','#fbbf24','#34d399','#60a5fa'];
+
+async function loadModelInfo() {
+  try {
+    const res  = await fetch('/model/info');
+    const data = await res.json();
+    modelClasses = data.classes || [];
+    modelIcons   = data.icons   || [];
+    modelAlerts  = data.alerts  || [];
+
+    // Update badge
+    document.getElementById('modelNameBadge').textContent = data.model_name || '–';
+    const typeBadge = document.getElementById('modelTypeBadge');
+    typeBadge.textContent = data.is_upload ? 'Upload Train' : 'Model Utama';
+    typeBadge.style.background = data.is_upload ? 'rgba(249,115,22,0.2)' : 'rgba(37,99,235,0.2)';
+    typeBadge.style.color      = data.is_upload ? '#f97316' : '#60a5fa';
+
+    // Alert classes info
+    const alertNames = modelClasses.filter((_, i) => modelAlerts[i]);
+    const alertBadge = document.getElementById('alertClassesBadge');
+    alertBadge.textContent = alertNames.length
+      ? '🔔 Alarm: ' + alertNames.join(', ')
+      : '🔕 Tidak ada kelas alarm';
+
+    // Build stat grid dinamis
+    buildStatGrid();
+  } catch (e) {
+    console.error('loadModelInfo error:', e);
+  }
+}
+
+function buildStatGrid() {
+  const grid = document.getElementById('statGrid');
+  // Sisipkan stat cards sebelum statAlert
+  const alertCard = document.getElementById('statAlert');
+  // Remove old dynamic cards
+  grid.querySelectorAll('.dyn-stat').forEach(el => el.remove());
+
+  modelClasses.forEach((name, i) => {
+    const color = PALETTE[i % PALETTE.length];
+    const icon  = modelIcons[i] || '🏷';
+    const card  = document.createElement('div');
+    card.className = 'stat-card dyn-stat';
+    card.id = 'statCard-' + i;
+    card.innerHTML = `<div class="stat-val" id="statVal-${i}">0</div><div class="stat-key">${icon} ${name}</div>`;
+    grid.insertBefore(card, alertCard);
+  });
+}
+
+// ── Helpers ────────────────────────────────────────────────
+function classIcon(label) {
+  const idx = modelClasses.indexOf(label);
+  return idx >= 0 ? (modelIcons[idx] || '🏷') : '🏷';
+}
+
+function classColor(label) {
+  const idx = modelClasses.indexOf(label);
+  return idx >= 0 ? PALETTE[idx % PALETTE.length] : '#94a3b8';
+}
+
+function isAlarmClass(label) {
+  const idx = modelClasses.indexOf(label);
+  return idx >= 0 ? (modelAlerts[idx] || false) : false;
+}
+
+function renderWebcamDets(dets) {
+  if (!dets || dets.length === 0) {
+    webcamDets.innerHTML = '<div class="det-empty"><span>🔍</span><span>Tidak ada objek</span></div>';
+    return;
+  }
+  webcamDets.innerHTML = dets.map(d => {
+    const color = classColor(d.label);
+    return `
+    <div class="det-row" style="border-left:3px solid ${color};">
+      <span class="det-icon">${classIcon(d.label)}</span>
+      <div class="det-info">
+        <div class="det-name">${d.label}</div>
+        <div class="det-sub">Terdeteksi</div>
+      </div>
+      <span class="det-pct" style="color:${color};">${d.confidence}%</span>
+    </div>`;
+  }).join('');
+}
+
+function updateStats(dets) {
+  if (!dets) return;
+  const counts = {};
+  dets.forEach(d => counts[d.label] = (counts[d.label] || 0) + 1);
+
+  // Update each dynamic stat card
+  modelClasses.forEach((name, i) => {
+    const valEl = document.getElementById('statVal-' + i);
+    const card  = document.getElementById('statCard-' + i);
+    if (!valEl) return;
+    const cnt = counts[name] || 0;
+    valEl.textContent = cnt;
+    if (modelAlerts[i] && cnt > 0) {
+      card.classList.add('alert');
+    } else {
+      card.classList.remove('alert');
+    }
+  });
+
+  const hasViolation = dets.some(d => isAlarmClass(d.label));
+  document.getElementById('statAlert').style.display = hasViolation ? 'block' : 'none';
+}
+
+function resetStats() {
+  modelClasses.forEach((_, i) => {
+    const valEl = document.getElementById('statVal-' + i);
+    const card  = document.getElementById('statCard-' + i);
+    if (valEl) valEl.textContent = '0';
+    if (card)  card.classList.remove('alert');
+  });
+  document.getElementById('statAlert').style.display = 'none';
+}
+
+function renderUploadDets(dets) {
+  if (!dets || dets.length === 0) { uploadDets.innerHTML = ''; return; }
+  uploadDets.innerHTML = dets.map(d => {
+    const color = classColor(d.label);
+    return `
+    <div class="det-row" style="padding:5px 10px; font-size:0.78rem; border-left:3px solid ${color};">
+      <span>${classIcon(d.label)}</span>
+      <span style="font-weight:600">${d.label}</span>
+      <span style="color:${color}; font-weight:700;">${d.confidence}%</span>
+    </div>`;
+  }).join('');
+}
+
+// Load model info saat halaman dibuka
+loadModelInfo();
+</script>
+</body>
+</html>

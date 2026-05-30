@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Evaluasi — Computer Vision Laboratory</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}"/>
+  <style>
+    html, body { overflow: auto; }
+    /* All main styles are in style.css — only evaluate-specific extras */
+    .metric-card.c-green .metric-val {
+      background: linear-gradient(135deg, #10b981, #34d399);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .metric-card.c-blue .metric-val {
+      background: linear-gradient(135deg, #22d3ee, #3b82f6);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .metric-card.c-purple .metric-val {
+      background: linear-gradient(135deg, #8b5cf6, #ec4899);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .metric-card.c-yellow .metric-val {
+      background: linear-gradient(135deg, #f97316, #fbbf24);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .chart-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 16px;
+    }
+    @media (max-width: 700px) { .chart-row { grid-template-columns: 1fr; } }
+
+    /* ── Metric Tooltip ── */
+    .metric-key-wrap {
+      display: flex; align-items: center; justify-content: center; gap: 5px;
+      position: relative;
+    }
+    .tip-btn {
+      width: 16px; height: 16px; border-radius: 50%;
+      background: rgba(165,180,252,0.2); border: 1px solid rgba(165,180,252,0.4);
+      color: #a5b4fc; font-size: 0.62rem; font-weight: 700;
+      cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+      flex-shrink: 0; line-height: 1;
+    }
+    .tip-box {
+      display: none; position: absolute; bottom: calc(100% + 8px); left: 50%;
+      transform: translateX(-50%); width: 220px;
+      background: #0b1530; border: 1px solid rgba(99,102,241,0.4);
+      border-radius: 10px; padding: 10px 12px;
+      font-size: 0.72rem; color: #c7d2fe; line-height: 1.6;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5); z-index: 99; text-align: left;
+      pointer-events: none;
+    }
+    .tip-box strong { color: #a5b4fc; }
+    .tip-box::after {
+      content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+      border: 6px solid transparent; border-top-color: rgba(99,102,241,0.4);
+    }
+    .tip-btn:hover + .tip-box,
+    .tip-btn:focus + .tip-box { display: block; }
+
+    /* ── Metric explanation card ── */
+    .metric-explainer {
+      background: rgba(99,102,241,0.06); border: 1px solid rgba(99,102,241,0.2);
+      border-radius: 12px; padding: 16px; margin-bottom: 16px;
+    }
+    .metric-explainer summary {
+      cursor: pointer; font-size: 0.8rem; font-weight: 600;
+      color: #a5b4fc; list-style: none; display: flex; align-items: center; gap: 8px;
+    }
+    .metric-explainer summary::before { content: '💡'; }
+    .metric-explainer[open] summary::before { content: '📖'; }
+    .metric-explainer .exp-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px;
+    }
+    @media (max-width: 600px) { .metric-explainer .exp-grid { grid-template-columns: 1fr; } }
+    .exp-item { background: var(--bg3); border-radius: 8px; padding: 10px 12px; }
+    .exp-item .exp-title { font-size: 0.75rem; font-weight: 700; margin-bottom: 4px; }
+    .exp-item .exp-desc  { font-size: 0.7rem; color: var(--text-dim); line-height: 1.55; }
+    .exp-formula { font-family: monospace; font-size: 0.68rem;
+                   color: #22d3ee; margin-top: 4px; }
+  </style>
+</head>
+<body>
+<div class="app" style="overflow:auto; height:auto; min-height:100vh;">
+
+  <header class="topbar">
+    <div class="topbar-brand">
+      <img src="{{ url_for('static', filename='images/profile.jpg') }}" alt="Faris"
+           style="width:32px; height:32px; border-radius:50%; object-fit:cover; object-position:center top;
+                  border:2px solid rgba(99,102,241,0.6); box-shadow:0 0 8px rgba(99,102,241,0.5);" />
+      Computer Vision Laboratory
+    </div>
+    <div class="topbar-center">
+      <span class="live-dot"></span> Evaluasi Model
+    </div>
+    <div class="topbar-right">
+      <a href="/flow"  class="btn btn-ghost" style="padding:5px 12px; font-size:0.78rem;">🔄 Alur Kerja</a>
+      <a href="/train" class="btn btn-ghost" style="padding:5px 12px; font-size:0.78rem;">⚙️ Training</a>
+      <a href="/"      class="btn btn-ghost" style="padding:5px 12px; font-size:0.78rem;">🖥 Monitor</a>
+      <span id="clock">--:--:--</span>
+      <a href="/logout" class="btn btn-ghost" style="padding:5px 12px; font-size:0.78rem; border-color:rgba(239,68,68,0.4); color:#fca5a5;" title="Logout">🚪 Keluar</a>
+    </div>
+  </header>
+
+  <div class="eval-wrap">
+    <div class="page-header">
+      <div>
+        <h1>📊 Evaluasi Matrix Model</h1>
+        <p>Analisis performa setiap model yang telah dilatih — Precision, Recall, mAP, dan Loss per epoch</p>
+      </div>
+    </div>
+
+    <!-- Loading state -->
+    <div id="loadingState" style="text-align:center; padding:64px 0; color:var(--muted);">
+      <div class="spinner" style="width:32px;height:32px;border-width:3px;margin:0 auto 16px;"></div>
+      <p>Memuat data evaluasi...</p>
+    </div>
+
+    <!-- No data state -->
+    <div id="noDataState" style="display:none;">
+      <div class="no-data">
+        <div class="nd-icon">📭</div>
+        <p style="font-size:1rem; color:var(--text); margin-bottom:8px;">Belum ada data evaluasi</p>
+        <p style="font-size:0.85rem;">Lakukan training terlebih dahulu di halaman <a href="/train" style="color:var(--blue);">Training</a></p>
+      </div>
+    </div>
+
+    <!-- Main content -->
+    <div id="mainContent" style="display:none;">
+
+      <!-- Model selector -->
+      <div class="model-tabs" id="modelTabs"></div>
+
+      <!-- Per-model detail -->
+      <div id="modelDetail"></div>
+
+      <!-- Perbandingan semua model -->
+      <div id="compareSection" style="display:none;">
+        <div class="card">
+          <div class="card-title">🏆 Perbandingan Semua Model</div>
+          <div class="compare-grid" id="compareGrid"></div>
+          <div class="chart-wrap" style="margin-top:16px;">
+            <div class="chart-title">PERBANDINGAN mAP@50 — SEMUA MODEL</div>
+            <canvas id="compareChart" height="120"></canvas>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── Footer ──────────────────────────────────────────── -->
+  <footer class="app-footer">
+    <div class="footer-brand">
+      Computer Vision Laboratory
+    </div>
+    <div class="footer-copy">
+      © 2025 Muhammad Al Farisy &nbsp;·&nbsp; Powered by Muhammad Al Farisy
+    </div>
+    <div class="footer-nav">
+      <a href="/">🖥 Monitor</a>
+      <a href="/train">⚙️ Training</a>
+      <a href="/evaluate">📊 Evaluasi</a>
+      <a href="/flow">🔄 Alur Kerja</a>
+    </div>
+  </footer>
+
+</div>
+
+<script>
+// Clock
+setInterval(() => {
+  document.getElementById('clock').textContent =
+    new Date().toLocaleTimeString('id-ID', { hour12: false });
+}, 1000);
+
+// ── Global state ───────────────────────────────────────────
+let allModels    = [];
+let activeIdx    = 0;
+
+// ── Load data ──────────────────────────────────────────────
+async function loadData() {
+  try {
+    const res  = await fetch('/evaluate/metrics');
+    const data = await res.json();
+    document.getElementById('loadingState').style.display = 'none';
+
+    if (!data || !data.length) {
+      document.getElementById('noDataState').style.display = 'block';
+      return;
+    }
+
+    allModels = data;
+    document.getElementById('mainContent').style.display = 'block';
+    buildTabs();
+    showModel(0);
+    if (allModels.length > 1) buildCompare();
+  } catch (e) {
+    document.getElementById('loadingState').innerHTML =
+      `<p style="color:var(--red)">❌ Gagal memuat data: ${e.message}</p>`;
+  }
+}
+
+// ── Build tabs ─────────────────────────────────────────────
+function buildTabs() {
+  const tabs = document.getElementById('modelTabs');
+  tabs.innerHTML = allModels.map((m, i) => `
+    <button class="model-tab ${i===0?'active':''}" onclick="showModel(${i})" id="tab-${i}">
+      ${m.active ? '<span class="active-dot"></span>' : ''}
+      ${m.label}
+      <span style="font-size:0.68rem;opacity:0.6;">${m.epochs} epoch</span>
+    </button>`).join('');
+}
+
+// ── Show one model detail ──────────────────────────────────
+function showModel(idx) {
+  activeIdx = idx;
+  document.querySelectorAll('.model-tab').forEach((t, i) =>
+    t.classList.toggle('active', i === idx));
+  const m = allModels[idx];
+  const b = m.best;
+  const detail = document.getElementById('modelDetail');
+
+  detail.innerHTML = `
+    <!-- Metric explainer -->
+    <details class="metric-explainer">
+      <summary>Apa arti metrik-metrik ini? (klik untuk buka penjelasan)</summary>
+      <div class="exp-grid">
+        <div class="exp-item">
+          <div class="exp-title" style="color:#22c55e;">📐 Precision</div>
+          <div class="exp-desc">Dari semua prediksi positif model, berapa persen yang benar-benar tepat?<br>
+            <em>Semakin tinggi = semakin sedikit false alarm.</em>
+            <div class="exp-formula">Precision = TP / (TP + FP)</div>
+          </div>
+        </div>
+        <div class="exp-item">
+          <div class="exp-title" style="color:#38bdf8;">🎯 Recall</div>
+          <div class="exp-desc">Dari semua objek yang sebenarnya ada, berapa persen yang berhasil terdeteksi?<br>
+            <em>Semakin tinggi = semakin sedikit objek yang terlewat.</em>
+            <div class="exp-formula">Recall = TP / (TP + FN)</div>
+          </div>
+        </div>
+        <div class="exp-item">
+          <div class="exp-title" style="color:#22c55e;">📊 mAP@50</div>
+          <div class="exp-desc">Mean Average Precision pada threshold IoU 50%. IoU mengukur seberapa besar overlap bounding box prediksi vs ground truth.<br>
+            <em>Patokan umum: &gt;50% = cukup baik, &gt;75% = bagus.</em>
+            <div class="exp-formula">IoU ≥ 0.5 → deteksi dianggap benar</div>
+          </div>
+        </div>
+        <div class="exp-item">
+          <div class="exp-title" style="color:#eab308;">🏆 mAP@50-95</div>
+          <div class="exp-desc">Rata-rata mAP di berbagai threshold IoU (50%, 55%, ..., 95%). Lebih ketat dari mAP@50 — mengukur presisi lokasi bounding box.<br>
+            <em>Metrik utama kompetisi COCO (standar industri).</em>
+            <div class="exp-formula">Avg mAP dari IoU 0.5 → 0.95 (step 0.05)</div>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <!-- Metric cards -->
+    <div class="card">
+      <div class="card-title">📈 Metrik Terbaik — Epoch ${b.epoch}</div>
+      <div class="metric-grid">
+        <div class="metric-card c-green">
+          <div class="metric-val">${b.precision}%</div>
+          <div class="metric-key">
+            <div class="metric-key-wrap">Precision
+              <span class="tip-btn" tabindex="0">?</span>
+              <div class="tip-box">Dari semua prediksi positif, berapa % yang tepat?<br><strong>TP / (TP+FP)</strong></div>
+            </div>
+          </div>
+        </div>
+        <div class="metric-card c-blue">
+          <div class="metric-val">${b.recall}%</div>
+          <div class="metric-key">
+            <div class="metric-key-wrap">Recall
+              <span class="tip-btn" tabindex="0">?</span>
+              <div class="tip-box">Dari semua objek nyata, berapa % yang terdeteksi?<br><strong>TP / (TP+FN)</strong></div>
+            </div>
+          </div>
+        </div>
+        <div class="metric-card c-green">
+          <div class="metric-val">${b.mAP50}%</div>
+          <div class="metric-key">
+            <div class="metric-key-wrap">mAP@50
+              <span class="tip-btn" tabindex="0">?</span>
+              <div class="tip-box">Mean Average Precision dengan IoU ≥ 50%.<br><strong>&gt;75% = performa bagus</strong></div>
+            </div>
+          </div>
+        </div>
+        <div class="metric-card c-yellow">
+          <div class="metric-val">${b.mAP50_95}%</div>
+          <div class="metric-key">
+            <div class="metric-key-wrap">mAP@50-95
+              <span class="tip-btn" tabindex="0">?</span>
+              <div class="tip-box">Rata-rata mAP di IoU 50%–95%. Standar kompetisi COCO.<br><strong>Lebih ketat dari mAP@50</strong></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Progress bars -->
+      <div style="margin-bottom:16px;">
+        ${[
+          { label:'Precision', val:b.precision, color:'#22c55e', desc:'Ketepatan prediksi' },
+          { label:'Recall',    val:b.recall,    color:'#38bdf8', desc:'Kelengkapan deteksi' },
+          { label:'mAP@50',   val:b.mAP50,     color:'#22c55e', desc:'Akurasi lokasi (IoU≥50%)' },
+          { label:'mAP@50-95',val:b.mAP50_95,  color:'#eab308', desc:'Standar COCO (ketat)' },
+        ].map(p => `
+          <div class="prog-row">
+            <span class="prog-label" title="${p.desc}">${p.label}
+              <span style="font-size:0.62rem;color:var(--muted);font-weight:400;"> — ${p.desc}</span>
+            </span>
+            <div class="prog-track">
+              <div class="prog-fill" style="width:${p.val}%;background:${p.color};"></div>
+            </div>
+            <span class="prog-val" style="color:${p.color};">${p.val}%</span>
+          </div>`).join('')}
+      </div>
+
+      <!-- Activate button -->
+      <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+        ${m.model_path
+          ? (m.active
+              ? `<button class="activate-btn active-state" disabled>✅ Model Sedang Aktif</button>`
+              : `<button class="activate-btn" onclick="activateModel('${m.model_path}',this)">⚡ Aktifkan Model Ini</button>`)
+          : `<span style="color:var(--muted);font-size:0.82rem;">⚠ File model tidak ditemukan</span>`}
+        ${m.model_path
+          ? `<span style="font-size:0.78rem;color:var(--muted);">${m.model_path.split('/').pop()} · ${m.size_mb} MB</span>`
+          : ''}
+      </div>
+    </div>
+
+    <!-- Charts row -->
+    <div class="chart-row">
+      <div class="chart-wrap">
+        <div class="chart-title">mAP@50 & PRECISION & RECALL PER EPOCH</div>
+        <canvas id="mapChart" height="140"></canvas>
+      </div>
+      <div class="chart-wrap">
+        <div class="chart-title">TRAINING & VALIDATION LOSS PER EPOCH</div>
+        <canvas id="lossChart" height="140"></canvas>
+      </div>
+    </div>
+
+    <!-- Epoch table -->
+    <div class="card" style="margin-top:16px;">
+      <div class="card-title">📋 Detail Per Epoch</div>
+      <div class="table-wrap">
+        <table class="epoch-table">
+          <thead>
+            <tr>
+              <th>Epoch</th>
+              <th>Precision</th>
+              <th>Recall</th>
+              <th>mAP@50</th>
+              <th>mAP@50-95</th>
+              <th>Train Loss</th>
+              <th>Val Loss</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${m.rows.map(r => {
+              const isBest = r.mAP50 === b.mAP50;
+              return `<tr class="${isBest ? 'best-row' : ''}">
+                <td>${r.epoch}${isBest ? ' 🏆' : ''}</td>
+                <td>${r.precision}%</td>
+                <td>${r.recall}%</td>
+                <td class="${isBest ? 'map-val' : ''}">${r.mAP50}%</td>
+                <td>${r.mAP50_95}%</td>
+                <td>${r.train_loss}</td>
+                <td>${r.val_loss}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+
+  // Draw charts after DOM update
+  requestAnimationFrame(() => {
+    drawCharts(m.rows);
+  });
+}
+
+// ── Draw per-model charts ──────────────────────────────────
+function drawCharts(rows) {
+  const epochs = rows.map(r => 'Ep' + r.epoch);
+  drawLineChart('mapChart', epochs, [
+    { label: 'mAP@50',    data: rows.map(r => r.mAP50),     color: '#22c55e' },
+    { label: 'Precision', data: rows.map(r => r.precision), color: '#38bdf8' },
+    { label: 'Recall',    data: rows.map(r => r.recall),    color: '#a78bfa' },
+  ]);
+  drawLineChart('lossChart', epochs, [
+    { label: 'Train Loss', data: rows.map(r => r.train_loss), color: '#eab308' },
+    { label: 'Val Loss',   data: rows.map(r => r.val_loss),   color: '#ef4444' },
+  ]);
+}
+
+// ── Build compare section ──────────────────────────────────
+function buildCompare() {
+  document.getElementById('compareSection').style.display = 'block';
+  const bestModel = allModels.reduce((a, b) => a.best.mAP50 >= b.best.mAP50 ? a : b);
+
+  const grid = document.getElementById('compareGrid');
+  grid.innerHTML = allModels.map(m => {
+    const isWinner = m.key === bestModel.key;
+    return `
+      <div class="compare-card ${isWinner ? 'winner' : ''}">
+        <h3>
+          ${m.label}
+          ${isWinner ? '<span class="winner-badge">🏆 TERBAIK</span>' : ''}
+          ${m.active ? '<span style="background:rgba(34,197,94,0.1);color:#22c55e;font-size:0.65rem;font-weight:700;padding:2px 8px;border-radius:20px;margin-left:6px;">● AKTIF</span>' : ''}
+        </h3>
+        ${[
+          { label:'Precision',  val: m.best.precision, color:'#22c55e' },
+          { label:'Recall',     val: m.best.recall,    color:'#38bdf8' },
+          { label:'mAP@50',     val: m.best.mAP50,     color:'#22c55e' },
+          { label:'mAP@50-95',  val: m.best.mAP50_95,  color:'#eab308' },
+        ].map(p => `
+          <div class="prog-row" style="font-size:0.75rem;">
+            <span class="prog-label" style="width:80px;font-size:0.72rem;">${p.label}</span>
+            <div class="prog-track">
+              <div class="prog-fill" style="width:${p.val}%;background:${p.color};"></div>
+            </div>
+            <span class="prog-val" style="color:${p.color};">${p.val}%</span>
+          </div>`).join('')}
+      </div>`;
+  }).join('');
+
+  // Compare chart
+  requestAnimationFrame(() => {
+    drawCompareChart();
+  });
+}
+
+function drawCompareChart() {
+  const canvas = document.getElementById('compareChart');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.offsetWidth || 700;
+  const H = parseInt(canvas.getAttribute('height')) || 120;
+  canvas.width = W; canvas.height = H;
+
+  const COLORS = ['#2563eb','#f97316','#a855f7','#22c55e'];
+  const epochs = allModels[0].rows.map((r, i) => i === 0 || i === allModels[0].rows.length - 1 ? 'Ep' + r.epoch : '');
+
+  const pad = { top: 18, right: 20, bottom: 24, left: 36 };
+  const iW  = W - pad.left - pad.right;
+  const iH  = H - pad.top  - pad.bottom;
+  const allVals = allModels.flatMap(m => m.rows.map(r => r.mAP50));
+  const minV = Math.max(0, Math.min(...allVals) * 0.95);
+  const maxV = Math.min(100, Math.max(...allVals) * 1.05);
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Grid
+  ctx.strokeStyle = '#1e2330'; ctx.lineWidth = 1;
+  [0, 0.5, 1].forEach(t => {
+    const y = pad.top + iH * (1 - t);
+    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + iW, y); ctx.stroke();
+    const val = minV + (maxV - minV) * t;
+    ctx.fillStyle = '#475569'; ctx.font = '9px Segoe UI'; ctx.textAlign = 'right';
+    ctx.fillText(val.toFixed(0) + '%', pad.left - 4, y + 3);
+  });
+
+  allModels.forEach((m, mi) => {
+    const pts = m.rows.map((r, i) => ({
+      x: pad.left + (i / (m.rows.length - 1 || 1)) * iW,
+      y: pad.top  + iH * (1 - (r.mAP50 - minV) / (maxV - minV || 1))
+    }));
+    ctx.beginPath();
+    pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+    ctx.strokeStyle = COLORS[mi % COLORS.length];
+    ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.stroke();
+
+    // Legend
+    const lx = pad.left + mi * 180;
+    ctx.fillStyle = COLORS[mi % COLORS.length];
+    ctx.fillRect(lx, 4, 14, 4);
+    ctx.fillStyle = '#94a3b8'; ctx.font = '9px Segoe UI'; ctx.textAlign = 'left';
+    ctx.fillText(m.label, lx + 18, 10);
+  });
+}
+
+// ── Activate model ─────────────────────────────────────────
+async function activateModel(path, btn) {
+  btn.disabled = true;
+  btn.textContent = '⏳ Mengaktifkan...';
+  try {
+    const res  = await fetch('/train/switch-model', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ path })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      // Reload semua data agar status aktif terupdate
+      allModels = [];
+      document.getElementById('mainContent').style.display = 'none';
+      document.getElementById('loadingState').style.display = 'block';
+      document.getElementById('loadingState').innerHTML =
+        '<div class="spinner" style="width:32px;height:32px;border-width:3px;margin:0 auto 16px;"></div><p>Memuat ulang...</p>';
+      setTimeout(() => loadData(), 500);
+    } else {
+      alert('❌ ' + data.error);
+      btn.disabled = false;
+      btn.textContent = '⚡ Aktifkan Model Ini';
+    }
+  } catch(e) {
+    alert('❌ Gagal: ' + e.message);
+    btn.disabled = false;
+    btn.textContent = '⚡ Aktifkan Model Ini';
+  }
+}
+
+// ── Line chart helper ──────────────────────────────────────
+function drawLineChart(id, labels, datasets) {
+  const canvas = document.getElementById(id);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.offsetWidth || 500;
+  const H = parseInt(canvas.getAttribute('height')) || 140;
+  canvas.width = W; canvas.height = H;
+
+  const pad = { top: 14, right: 20, bottom: 24, left: 36 };
+  const iW  = W - pad.left - pad.right;
+  const iH  = H - pad.top  - pad.bottom;
+  const allVals = datasets.flatMap(d => d.data);
+  const minV = Math.min(...allVals) * 0.95;
+  const maxV = Math.max(...allVals) * 1.05;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Grid
+  ctx.strokeStyle = '#1e2330'; ctx.lineWidth = 1;
+  [0, 0.25, 0.5, 0.75, 1].forEach(t => {
+    const y = pad.top + iH * (1 - t);
+    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + iW, y); ctx.stroke();
+    const val = minV + (maxV - minV) * t;
+    ctx.fillStyle = '#475569'; ctx.font = '9px Segoe UI'; ctx.textAlign = 'right';
+    ctx.fillText(val.toFixed(1), pad.left - 4, y + 3);
+  });
+
+  // X labels — show first, middle, last only
+  ctx.fillStyle = '#475569'; ctx.font = '9px Segoe UI'; ctx.textAlign = 'center';
+  [0, Math.floor(labels.length / 2), labels.length - 1].forEach(i => {
+    const x = pad.left + (i / (labels.length - 1 || 1)) * iW;
+    ctx.fillText(labels[i], x, H - 6);
+  });
+
+  // Lines
+  datasets.forEach(ds => {
+    const pts = ds.data.map((v, i) => ({
+      x: pad.left + (i / (labels.length - 1 || 1)) * iW,
+      y: pad.top  + iH * (1 - (v - minV) / (maxV - minV || 1))
+    }));
+    // Area
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pad.top + iH);
+    pts.forEach(p => ctx.lineTo(p.x, p.y));
+    ctx.lineTo(pts[pts.length - 1].x, pad.top + iH);
+    ctx.closePath();
+    ctx.fillStyle = ds.color + '15';
+    ctx.fill();
+    // Line
+    ctx.beginPath();
+    pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+    ctx.strokeStyle = ds.color; ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.stroke();
+  });
+
+  // Legend
+  let lx = pad.left;
+  datasets.forEach(ds => {
+    ctx.fillStyle = ds.color;
+    ctx.fillRect(lx, 2, 14, 4);
+    ctx.fillStyle = '#94a3b8'; ctx.font = '9px Segoe UI'; ctx.textAlign = 'left';
+    ctx.fillText(ds.label, lx + 18, 9);
+    lx += ctx.measureText(ds.label).width + 40;
+  });
+}
+
+loadData();
+</script>
+</body>
+</html>

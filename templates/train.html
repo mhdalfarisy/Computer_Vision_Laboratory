@@ -1,0 +1,1663 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Training — Computer Vision Laboratory</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}"/>
+  <style>
+    html, body { overflow: auto; }
+    /* Page-specific extras only — main styles in style.css */
+    #annotateCanvas.crop-mode  { cursor: se-resize !important; }
+    #annotateCanvas.poly-mode  { cursor: crosshair !important; }
+    .crop-overlay { position:absolute; inset:0; pointer-events:none; border:2px dashed rgba(234,179,8,0.6); display:none; }
+    .crop-overlay.active { display:block; }
+    .canvas-wrap { min-height: 360px; display:flex; align-items:center; justify-content:center; position:relative; }
+    .ep-grid { grid-template-columns: repeat(8, 1fr); }
+    .ep-grid-wrap { height: 240px; overflow-y: auto; padding: 8px 10px; }
+    .ep-grid-wrap::-webkit-scrollbar { display:none; }
+    .ep-cats::-webkit-scrollbar { display:none; }
+    .ann-list { max-height: 200px; overflow-y: auto; }
+    .config-grid { grid-template-columns: 1fr 1fr; }
+    .form-group { display:flex; flex-direction:column; gap:6px; }
+    .form-group input, .form-group select { width:100%; }
+    .train-progress { display:none; }
+
+    /* ── Epoch progress indicator ── */
+    .epoch-progress-wrap {
+      display: none;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 16px;
+      margin-bottom: 10px;
+    }
+    .epoch-progress-wrap.active { display: block; }
+    .epoch-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 8px;
+    }
+    .epoch-label {
+      font-size: 0.75rem; font-weight: 700; color: var(--muted-up);
+      letter-spacing: 0.06em; text-transform: uppercase;
+    }
+    .epoch-counter {
+      font-size: 0.85rem; font-weight: 700;
+      color: #a5b4fc;
+    }
+    .epoch-bar-track {
+      height: 8px; border-radius: 999px;
+      background: rgba(99,102,241,0.15);
+      overflow: hidden;
+    }
+    .epoch-bar-fill {
+      height: 100%; border-radius: 999px;
+      background: linear-gradient(90deg, #6366f1, #22d3ee);
+      transition: width 0.4s ease;
+      width: 0%;
+    }
+    .epoch-eta {
+      font-size: 0.68rem; color: var(--muted);
+      margin-top: 5px; text-align: right;
+    }
+    .cls-popup-btn {
+      display:flex; align-items:center; gap:8px;
+      padding:8px 12px; border-radius:var(--r-md);
+      border:none; background:transparent; color:var(--text);
+      cursor:pointer; font-size:0.83rem; font-weight:600;
+      text-align:left; transition:all 0.15s; font-family:inherit; width:100%;
+    }
+    .cls-popup-btn:hover { background:rgba(99,102,241,0.12); }
+    .cls-popup-btn.current { background:var(--grad-primary); color:#fff; }
+
+    /* ── Annotation Mode Switch ── */
+    .ann-mode-wrap {
+      display:none; margin-bottom:10px;
+      align-items:center; gap:12px; flex-wrap:wrap;
+    }
+    .ann-mode-switch {
+      display:flex; gap:3px; padding:3px;
+      background:var(--bg3); border-radius:10px; border:1px solid var(--border);
+    }
+    .ann-mode-btn {
+      border-radius:7px !important; padding:6px 16px !important;
+      font-size:0.8rem !important; font-weight:600 !important;
+      border:none !important; background:transparent !important;
+      color:var(--text-dim) !important; cursor:pointer;
+      transition:all 0.2s; display:flex; align-items:center; gap:6px;
+    }
+    .ann-mode-btn.active {
+      background:var(--grad-primary) !important;
+      color:#fff !important;
+      box-shadow: 0 0 12px rgba(99,102,241,0.45);
+    }
+    .poly-hint {
+      font-size:0.72rem; color:#a5b4fc;
+      padding:5px 12px; background:rgba(99,102,241,0.1);
+      border-radius:8px; border:1px solid rgba(99,102,241,0.25);
+      display:none;
+    }
+    /* polygon type badge in list */
+    .ann-type-badge {
+      font-size:0.62rem; padding:1px 6px; border-radius:4px;
+      background:rgba(99,102,241,0.2); color:#a5b4fc; margin-left:4px;
+    }
+  </style>
+</head>
+<body>
+<div class="app" style="overflow:auto; height:auto; min-height:100vh;">
+
+  <header class="topbar">
+    <div class="topbar-brand">
+      <img src="{{ url_for('static', filename='images/profile.jpg') }}" alt="Faris"
+           style="width:32px; height:32px; border-radius:50%; object-fit:cover; object-position:center top;
+                  border:2px solid rgba(99,102,241,0.6); box-shadow:0 0 8px rgba(99,102,241,0.5);" />
+      Computer Vision Laboratory
+    </div>
+    <div class="topbar-center">
+      <span class="live-dot"></span> Training Panel
+    </div>
+    <div class="topbar-right">
+      <a href="/flow"     class="btn btn-ghost" style="padding:5px 12px; font-size:0.78rem;">🔄 Alur Kerja</a>
+      <a href="/evaluate" class="btn btn-ghost" style="padding:5px 12px; font-size:0.78rem;">📊 Evaluasi</a>
+      <a href="/"         class="btn btn-ghost" style="padding:5px 12px; font-size:0.78rem;">🖥 Monitor</a>
+      <span id="clock">--:--:--</span>
+      <a href="/logout" class="btn btn-ghost" style="padding:5px 12px; font-size:0.78rem; border-color:rgba(239,68,68,0.4); color:#fca5a5;" title="Logout">🚪 Keluar</a>
+    </div>
+  </header>
+
+  <div class="train-wrap">
+    <div class="page-header">
+      <div>
+        <h1>⚙️ Manajemen Training Model</h1>
+        <p>Upload data baru, latih ulang model, dan kelola versi model</p>
+      </div>
+      <a href="/" class="btn btn-ghost back-btn">← Kembali ke Monitor</a>
+    </div>
+
+    <!-- ── Info Dataset ──────────────────────────────────────── -->
+    <div class="card">
+      <div class="card-title">📊 Statistik Dataset</div>
+      <div class="info-grid" id="statsGrid">
+        <div class="info-card"><div class="info-val" id="s-train">–</div><div class="info-key">🖼 Train</div></div>
+        <div class="info-card"><div class="info-val" id="s-valid">–</div><div class="info-key">✅ Valid</div></div>
+        <div class="info-card"><div class="info-val" id="s-test">–</div><div class="info-key">🧪 Test</div></div>
+      </div>
+      <!-- Label counts — diisi dinamis JS -->
+      <div class="info-grid" id="classStatsGrid" style="margin-top:10px;"></div>
+      <!-- Chart distribusi label -->
+      <div style="margin-top:16px; background:var(--bg3); border-radius:10px; padding:16px;">
+        <div style="font-size:0.72rem; color:var(--muted); letter-spacing:0.06em; font-weight:600; margin-bottom:10px;">DISTRIBUSI LABEL DATASET</div>
+        <canvas id="datasetChart" height="80"></canvas>
+      </div>
+    </div>
+
+    <!-- ── Ambil Foto Dataset ────────────────────────────────── -->
+    <div class="card">
+      <div class="card-title">📸 Ambil Foto Dataset Baru</div>
+      <p style="font-size:0.8rem; color:var(--muted); margin-bottom:14px;">
+        Foto yang diambil disimpan ke folder <code style="background:var(--bg3);padding:2px 6px;border-radius:4px;color:#22d3ee;">ip_dataset/</code> —
+        ambil dulu, anotasi belakangan.
+      </p>
+
+      <div style="display:grid; grid-template-columns:1fr 280px; gap:16px; align-items:start;">
+
+        <!-- Kamera feed -->
+        <div>
+          <div style="position:relative; background:var(--bg3); border-radius:12px; overflow:hidden;
+                      aspect-ratio:16/9; display:flex; align-items:center; justify-content:center;"
+               id="captureFeedWrap">
+            <video id="captureVideo" autoplay playsinline muted
+                   style="width:100%;height:100%;object-fit:cover;display:none;"></video>
+            <canvas id="captureCanvas" style="display:none;"></canvas>
+            <div id="capturePlaceholder"
+                 style="display:flex;flex-direction:column;align-items:center;gap:8px;color:var(--muted);">
+              <span style="font-size:2.5rem;">📷</span>
+              <span style="font-size:0.82rem;">Kamera belum aktif</span>
+            </div>
+            <!-- Flash effect -->
+            <div id="captureFlash"
+                 style="display:none;position:absolute;inset:0;background:#fff;opacity:0;
+                        border-radius:12px;pointer-events:none;transition:opacity 0.1s;"></div>
+            <!-- Live badge -->
+            <div id="captureLiveBadge" style="display:none;position:absolute;top:10px;left:10px;">
+              <span class="ov-badge"><span class="dot"></span> LIVE</span>
+            </div>
+            <!-- Counter badge -->
+            <div id="captureCountBadge"
+                 style="display:none;position:absolute;top:10px;right:10px;
+                        background:rgba(99,102,241,0.8);border-radius:8px;
+                        padding:3px 10px;font-size:0.72rem;font-weight:700;">
+              📸 <span id="captureTotalBadge">0</span> foto
+            </div>
+          </div>
+
+          <!-- Controls -->
+          <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;align-items:center;">
+            <select id="captureCamSelect"
+                    style="display:none;padding:6px 10px;background:var(--bg3);
+                           border:1px solid var(--border);border-radius:8px;
+                           color:var(--text);font-size:0.8rem;"></select>
+            <button class="btn btn-blue"  id="captureStartBtn" onclick="startCaptureCamera()">▶ Buka Kamera</button>
+            <button class="btn btn-green" id="captureShootBtn" style="display:none;font-size:0.9rem;"
+                    onclick="capturePhoto()">📸 Ambil Foto</button>
+            <button class="btn btn-ghost" id="captureAutoBtn" style="display:none;"
+                    onclick="toggleAutoCapture()">⏱ Auto (3 dtk)</button>
+            <button class="btn btn-red"   id="captureStopBtn" style="display:none;"
+                    onclick="stopCaptureCamera()">⏹ Stop</button>
+          </div>
+          <!-- Auto capture countdown -->
+          <div id="autoCountdown" style="display:none;margin-top:8px;font-size:0.78rem;
+               color:#22d3ee;padding:6px 12px;background:rgba(34,211,238,0.1);
+               border-radius:8px;border:1px solid rgba(34,211,238,0.2);">
+            ⏱ Auto-capture aktif — berikutnya dalam <strong id="cdNum">3</strong> detik
+          </div>
+        </div>
+
+        <!-- Panel kanan: info + gallery -->
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          <!-- Stats -->
+          <div style="background:var(--bg3);border-radius:10px;padding:14px;
+                      border:1px solid var(--border);text-align:center;">
+            <div style="font-size:2rem;font-weight:800;
+                        background:var(--grad-brand);-webkit-background-clip:text;
+                        -webkit-text-fill-color:transparent;" id="captureCount">0</div>
+            <div style="font-size:0.72rem;color:var(--muted);letter-spacing:0.06em;">FOTO TERSIMPAN</div>
+            <div style="font-size:0.68rem;color:var(--muted);margin-top:4px;
+                        word-break:break-all;" id="capturePathInfo">ip_dataset/</div>
+          </div>
+
+          <!-- Folder info -->
+          <div style="background:rgba(99,102,241,0.08);border-radius:10px;padding:12px;
+                      border:1px solid rgba(99,102,241,0.2);font-size:0.72rem;
+                      color:var(--text-dim);line-height:1.6;">
+            💾 Foto disimpan otomatis ke:<br>
+            <code style="color:#22d3ee;font-size:0.68rem;">ip_dataset/</code><br><br>
+            Setelah selesai, ambil foto dari folder tersebut → upload & anotasi di bagian bawah.
+          </div>
+
+          <!-- Refresh list -->
+          <button class="btn btn-ghost" style="font-size:0.78rem;" onclick="refreshGallery()">
+            🔄 Refresh Daftar Foto
+          </button>
+
+          <!-- Mini gallery -->
+          <div style="font-size:0.7rem;color:var(--muted);letter-spacing:0.06em;font-weight:700;">
+            FOTO TERBARU
+          </div>
+          <div id="miniGallery"
+               style="display:grid;grid-template-columns:1fr 1fr;gap:6px;max-height:280px;overflow-y:auto;">
+            <div style="color:var(--muted);font-size:0.75rem;grid-column:1/-1;text-align:center;padding:12px;">
+              Belum ada foto
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Upload & Anotasi ──────────────────────────────────── -->
+    <div class="card">
+      <div class="card-title">🖼 Upload Gambar & Anotasi</div>
+      <input type="file" id="annoFileInput" accept="image/*" hidden/>
+
+      <!-- ── Mode Switch (muncul setelah gambar dipilih) ── -->
+      <div class="ann-mode-wrap" id="annoModeRow">
+        <div class="ann-mode-switch">
+          <button id="modeBboxBtn" class="ann-mode-btn active" onclick="setAnnotMode('bbox')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+            Bounding Box
+          </button>
+          <button id="modePolyBtn" class="ann-mode-btn" onclick="setAnnotMode('polygon')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 22 19 2 19"/></svg>
+            Polygon
+          </button>
+        </div>
+        <span class="poly-hint" id="polyHint">
+          🖱 Klik tambah titik &nbsp;·&nbsp; Klik titik pertama / 2× klik untuk tutup &nbsp;·&nbsp; ESC batalkan
+        </span>
+      </div>
+
+      <div style="margin-bottom:12px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        <button class="btn btn-blue" onclick="document.getElementById('annoFileInput').click()">📂 Pilih Gambar</button>
+
+        <!-- Crop sebelum labeling -->
+        <button class="btn btn-ghost" id="cropModeBtn" style="display:none" onclick="toggleCropMode()">✂ Crop Gambar</button>
+        <button class="btn btn-ghost" id="applyCropBtn" style="display:none; border-color:#eab308; color:#eab308;" onclick="applyCrop()">✅ Terapkan Crop</button>
+        <button class="btn btn-ghost" id="cancelCropBtn" style="display:none;" onclick="cancelCrop()">✕ Batal Crop</button>
+        <button class="btn btn-ghost" id="resetImgBtn"  style="display:none;" onclick="resetImage()">↺ Reset Gambar</button>
+
+        <span style="width:1px; height:20px; background:var(--border); margin:0 2px;"></span>
+
+        <button class="btn btn-ghost" id="clearCanvasBtn" style="display:none" onclick="clearAnnotations()">🗑 Hapus Semua</button>
+        <button class="btn btn-ghost" id="undoBtn"        style="display:none" onclick="undoLast()">↩ Undo</button>
+
+        <!-- Export crop bbox -->
+        <button class="btn btn-ghost" id="exportCropBtn" style="display:none; border-color:#a78bfa; color:#a78bfa;" onclick="exportCrops()">📦 Export Crop Objek</button>
+
+        <span id="annoFilename" style="font-size:0.8rem; color:var(--muted); margin-left:4px;"></span>
+      </div>
+
+      <div class="annotate-layout">
+        <div class="canvas-wrap" id="canvasWrap">
+          <div class="canvas-placeholder" id="canvasPlaceholder">
+            <span>🖼</span>
+            <p>Pilih gambar untuk mulai anotasi</p>
+          </div>
+          <canvas id="annotateCanvas" style="display:none"></canvas>
+          <span class="mode-badge label" id="modeBadge" style="display:none">✏ LABEL</span>
+          <div class="crop-overlay" id="cropOverlay"></div>
+        </div>
+
+        <div class="ann-panel">
+          <div>
+            <div class="ann-label" style="display:flex;justify-content:space-between;align-items:center;">
+              PILIH KELAS OBJEK
+              <button class="btn btn-ghost" style="padding:2px 8px;font-size:0.7rem;" onclick="showAddClass()">+ Tambah</button>
+            </div>
+
+            <!-- Form tambah kelas baru -->
+            <div id="addClassForm" style="display:none; margin-bottom:8px; flex-direction:column; gap:8px;">
+
+              <!-- Baris 1: icon + nama + warna -->
+              <div style="display:flex; gap:6px; align-items:center;">
+                <!-- Preview icon terpilih -->
+                <div id="selectedIconPreview"
+                  style="width:34px;height:34px;border-radius:6px;background:var(--bg3);border:1px solid var(--border);
+                         display:flex;align-items:center;justify-content:center;font-size:1.1rem;cursor:pointer;flex-shrink:0;"
+                  title="Pilih icon" onclick="toggleIconPicker()">🏷</div>
+
+                <input type="text" id="newClassName" placeholder="Nama label baru..."
+                  style="flex:1;min-width:0;padding:6px 10px;background:var(--bg3);border:1px solid var(--border);
+                         color:var(--text);border-radius:6px;font-size:0.82rem;outline:none;"/>
+
+                <div style="position:relative;width:34px;height:34px;border-radius:6px;overflow:hidden;
+                            border:1px solid var(--border);cursor:pointer;flex-shrink:0;" title="Pilih warna">
+                  <div id="colorPreview" style="width:100%;height:100%;background:#a78bfa;"></div>
+                  <input type="color" id="newClassColor" value="#a78bfa"
+                    style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;"
+                    oninput="document.getElementById('colorPreview').style.background=this.value"/>
+                </div>
+              </div>
+
+              <!-- hint + tombol aksi -->
+              <div style="display:flex; align-items:center; justify-content:space-between; gap:6px;">
+                <span style="font-size:0.68rem;color:var(--muted);">Klik icon untuk buka emoji picker</span>
+                <div style="display:flex; gap:6px; flex-shrink:0;">
+                  <button class="btn btn-blue" style="padding:5px 14px;font-size:0.8rem;" onclick="addNewClass()">✓ Simpan</button>
+                  <button class="btn btn-ghost" style="padding:5px 10px;font-size:0.8rem;" onclick="hideAddClass()">✕</button>
+                </div>
+              </div>
+
+              <!-- Toggle alert -->
+              <div style="display:flex; align-items:center; justify-content:space-between;
+                          background:var(--bg3); border:1px solid var(--border); border-radius:8px; padding:10px 14px;">
+                <div>
+                  <div style="font-size:0.82rem; font-weight:600;">🔔 Tambah ke Alert</div>
+                  <div style="font-size:0.7rem; color:var(--muted); margin-top:2px;">Alarm berbunyi saat kelas ini terdeteksi</div>
+                </div>
+                <label style="position:relative; display:inline-block; width:44px; height:24px; cursor:pointer;">
+                  <input type="checkbox" id="newClassAlert" style="opacity:0; width:0; height:0;">
+                  <span id="alertToggleTrack"
+                    style="position:absolute;inset:0;background:var(--border);border-radius:24px;transition:0.2s;"
+                    onclick="toggleAlertStyle()"></span>
+                  <span id="alertToggleThumb"
+                    style="position:absolute;left:3px;top:3px;width:18px;height:18px;background:#fff;border-radius:50%;transition:0.2s;pointer-events:none;"></span>
+                </label>
+              </div>
+
+              <div style="font-size:0.7rem; color:var(--muted);">
+                Klik kotak icon untuk pilih emoji · Klik kotak warna untuk pilih warna
+              </div>
+            </div>
+
+            <div class="class-btns" id="classBtns">
+              <!-- diisi dinamis dari JS -->
+            </div>
+          </div>
+
+          <div>
+            <div class="ann-label">ANOTASI (<span id="annCount">0</span>)</div>
+            <div class="ann-list" id="annList"></div>
+          </div>
+
+          <button class="btn btn-green" id="saveAnnoBtn" style="display:none" onclick="saveAnnotation()">
+            💾 Simpan ke Dataset
+          </button>
+          <div id="saveStatus" style="font-size:0.78rem; color:var(--green); display:none;">✅ Tersimpan!</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Training Config ───────────────────────────────────── -->
+    <div class="card">
+      <div class="card-title">🚀 Konfigurasi Training</div>
+      <div class="config-grid">
+        <div class="form-group">
+          <label>BASE MODEL</label>
+          <select id="cfgModel">
+            <option value="yolov8n">YOLOv8n — Nano (paling cepat)</option>
+            <option value="yolov8s" selected>YOLOv8s — Small (direkomendasikan)</option>
+            <option value="yolov8m">YOLOv8m — Medium (lebih akurat)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>EPOCHS</label>
+          <input type="number" id="cfgEpochs" value="30" min="5" max="300"/>
+        </div>
+        <div class="form-group">
+          <label>IMAGE SIZE</label>
+          <select id="cfgImgsz">
+            <option value="416">416</option>
+            <option value="640" selected>640 (default)</option>
+            <option value="800">800</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>BATCH SIZE</label>
+          <input type="number" id="cfgBatch" value="8" min="1" max="64"/>
+        </div>
+      </div>
+
+      <div style="margin-top:16px; display:flex; gap:10px; align-items:center;">
+        <button class="btn btn-blue" id="startTrainBtn" onclick="startTraining()">⚡ Mulai Training</button>
+        <span id="trainStatus" style="font-size:0.82rem; color:var(--muted);"></span>
+      </div>
+    </div>
+
+    <!-- ── Log Training ──────────────────────────────────────── -->
+    <div class="card">
+      <div class="card-title">📋 Log Training</div>
+      <div class="train-progress" id="trainProgress"><div class="train-progress-bar"></div></div>
+
+      <!-- Epoch progress indicator -->
+      <div class="epoch-progress-wrap" id="epochProgressWrap">
+        <div class="epoch-header">
+          <span class="epoch-label">⚙️ Epoch Progress</span>
+          <span class="epoch-counter" id="epochCounter">— / —</span>
+        </div>
+        <div class="epoch-bar-track">
+          <div class="epoch-bar-fill" id="epochBarFill"></div>
+        </div>
+        <div class="epoch-eta" id="epochEta">&nbsp;</div>
+      </div>
+
+      <div class="log-box" id="logBox">
+        <span style="color:var(--muted)">Log training akan muncul di sini saat training berjalan...</span>
+      </div>
+    </div>
+
+    <!-- ── Model Manager ─────────────────────────────────────── -->
+    <div class="card">
+      <div class="card-title">🗂 Model Tersedia</div>
+      <div id="modelList"><div style="color:var(--muted); font-size:0.85rem;">Memuat daftar model...</div></div>
+    </div>
+
+  </div><!-- /train-wrap -->
+
+  <!-- ── Footer ──────────────────────────────────────────── -->
+  <footer class="app-footer">
+    <div class="footer-brand">
+      Computer Vision Laboratory
+    </div>
+    <div class="footer-copy">
+      © 2025 Muhammad Al Farisy &nbsp;·&nbsp; Powered by Muhammad Al Farisy
+    </div>
+    <div class="footer-nav">
+      <a href="/">🖥 Monitor</a>
+      <a href="/train">⚙️ Training</a>
+      <a href="/evaluate">📊 Evaluasi</a>
+      <a href="/flow">🔄 Alur Kerja</a>
+    </div>
+  </footer>
+
+</div>
+
+<!-- ── Class Change Popup ─────────────────────────────── -->
+<div class="cls-popup" id="clsPopup">
+  <div class="cls-popup-label">GANTI KELAS</div>
+  <div id="clsPopupBtns"></div>
+</div>
+
+<!-- ── Emoji Picker Modal ──────────────────────────────── -->
+<div class="emoji-picker" id="emojiPicker">
+  <div class="ep-search">
+    <input type="text" id="epSearch" placeholder="🔍  Cari emoji..." oninput="searchEmoji(this.value)" />
+  </div>
+  <div class="ep-cats" id="epCats"></div>
+  <div class="ep-grid-wrap" id="epGridWrap"></div>
+  <div class="ep-recent" id="epRecent" style="display:none">
+    <div class="ep-recent-label">BARU DIPAKAI</div>
+    <div class="ep-recent-row" id="epRecentRow"></div>
+  </div>
+</div>
+
+<script>
+// ── Clock ──────────────────────────────────────────────────
+setInterval(() => {
+  document.getElementById('clock').textContent =
+    new Date().toLocaleTimeString('id-ID', { hour12: false });
+}, 1000);
+
+// ── Load dataset info ──────────────────────────────────────
+async function loadInfo() {
+  const res  = await fetch('/train/dataset-info');
+  const data = await res.json();
+  document.getElementById('s-train').textContent = data.splits.train;
+  document.getElementById('s-valid').textContent = data.splits.valid;
+  document.getElementById('s-test').textContent  = data.splits.test;
+
+  // Render class stats dinamis
+  const classGrid = document.getElementById('classStatsGrid');
+  const classEntries = Object.entries(data.classes);
+  const COLORS_DEF = ['#f97316','#38bdf8','#4ade80','#a78bfa','#fb7185','#fbbf24','#34d399','#60a5fa'];
+  classGrid.innerHTML = classEntries.map(([name, count], i) => {
+    const color = (clsColors && clsColors[i]) || COLORS_DEF[i % COLORS_DEF.length];
+    const icon  = (clsIcons  && clsIcons[i])  || '🏷';
+    return `<div class="info-card" style="border-left:3px solid ${color}">
+      <div class="info-val" style="color:${color}">${count}</div>
+      <div class="info-key">${icon} ${name}</div>
+    </div>`;
+  }).join('');
+
+  // Dataset chart
+  drawDatasetChart(classEntries);
+  renderModels(data.models);
+}
+loadInfo();
+
+function drawDatasetChart(classEntries) {
+  const canvas = document.getElementById('datasetChart');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.offsetWidth || 600;
+  const H = parseInt(canvas.getAttribute('height')) || 80;
+  canvas.width = W; canvas.height = H;
+
+  const labels = classEntries.map(([n]) => n);
+  const values = classEntries.map(([, v]) => v);
+  const COLORS_DEF = ['#f97316','#38bdf8','#4ade80','#a78bfa','#fb7185','#fbbf24','#34d399','#60a5fa'];
+  const colors = labels.map((_, i) => (clsColors && clsColors[i]) || COLORS_DEF[i % COLORS_DEF.length]);
+  const max = Math.max(...values) * 1.1 || 1;
+  const bw  = (W - 40) / labels.length;
+  const gap = bw * 0.25;
+
+  ctx.clearRect(0, 0, W, H);
+  labels.forEach((lbl, i) => {
+    const x  = 20 + i * bw + gap / 2;
+    const bh = (values[i] / max) * (H - 28);
+    const y  = H - 20 - bh;
+    ctx.fillStyle = colors[i] + '33';
+    ctx.fillRect(x, y, bw - gap, bh);
+    ctx.fillStyle = colors[i];
+    ctx.fillRect(x, y, bw - gap, 3);
+    ctx.fillStyle = '#64748b';
+    ctx.font = '10px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.fillText(lbl, x + (bw - gap) / 2, H - 5);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 11px Segoe UI';
+    ctx.fillText(values[i].toLocaleString(), x + (bw - gap) / 2, y - 4);
+  });
+}
+
+function renderModels(models) {
+  const el = document.getElementById('modelList');
+  if (!models || !models.length) { el.innerHTML = '<p style="color:var(--muted)">Tidak ada model ditemukan</p>'; return; }
+
+  // Group by group field
+  const groups = {};
+  models.forEach(m => {
+    const g = m.group || 'Lainnya';
+    if (!groups[g]) groups[g] = [];
+    groups[g].push(m);
+  });
+
+  el.innerHTML = Object.entries(groups).map(([grpName, grpModels]) => `
+    <div style="margin-bottom:14px;">
+      <div style="font-size:0.7rem;color:var(--muted);letter-spacing:0.08em;font-weight:700;margin-bottom:8px;text-transform:uppercase;">${grpName}</div>
+      ${grpModels.map(m => `
+        <div class="model-item ${m.active ? 'active-model' : ''}" style="margin-bottom:6px;">
+          <span class="model-icon">🤖</span>
+          <div class="model-info">
+            <div class="model-name">${m.name}</div>
+            <div class="model-meta">${m.size_mb} MB · ${m.modified}</div>
+          </div>
+          ${m.active
+            ? '<span class="active-badge">✅ AKTIF</span>'
+            : `<button class="btn btn-ghost" style="padding:5px 12px;font-size:0.75rem;" onclick="switchModel('${m.path}')">Gunakan</button>`}
+        </div>`).join('')}
+    </div>`).join('');
+}
+
+async function switchModel(path) {
+  const res  = await fetch('/train/switch-model', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ path })
+  });
+  const data = await res.json();
+  if (data.ok) { alert('✅ ' + data.msg); loadInfo(); }
+  else alert('❌ ' + data.error);
+}
+
+// ── Annotation Tool ────────────────────────────────────────
+const canvas      = document.getElementById('annotateCanvas');
+const ctx         = canvas.getContext('2d');
+const modeBadge   = document.getElementById('modeBadge');
+const cropOverlay = document.getElementById('cropOverlay');
+let imgEl         = new Image();
+let origImgEl     = null;
+let boxes         = [];       // bounding box annotations
+let polygons      = [];       // polygon annotations
+let currentPoly   = [];       // titik polygon yang sedang digambar
+let polyMousePos  = null;     // posisi mouse untuk preview
+let annotMode     = 'bbox';   // 'bbox' | 'polygon'
+let drawing       = false;
+let startX = 0, startY = 0;
+let currentCls    = 0;
+let scale         = 1;
+let isCropMode    = false;
+let cropRect      = null;
+
+// Palet warna
+const PALETTE = ['#f97316','#38bdf8','#4ade80','#a78bfa','#fb7185','#fbbf24','#34d399','#60a5fa'];
+let clsColors  = [];
+let clsNames   = [];
+let clsIcons   = [];
+let clsAlerts  = [];   // true/false per kelas
+let selectedIconValue = '🏷';
+
+function toggleAlertStyle() {
+  const cb    = document.getElementById('newClassAlert');
+  const track = document.getElementById('alertToggleTrack');
+  const thumb = document.getElementById('alertToggleThumb');
+  cb.checked = !cb.checked;
+  track.style.background = cb.checked ? '#ef4444' : 'var(--border)';
+  thumb.style.left        = cb.checked ? '23px'   : '3px';
+}
+
+// ── Emoji Data (lengkap per kategori) ─────────────────────
+const EMOJI_CATS = [
+  { icon:'⭐', label:'Favorit',
+    emojis:['📱','💻','🖥','⌚','👤','🎒','📚','🔑','🚗','🐶','🍎','⚽','💡','🏷'] },
+  { icon:'😀', label:'Ekspresi',
+    emojis:['😀','😁','😂','🤣','😃','😄','😅','😆','😊','🙂','😇','🥰','😍','🤩','😘','😗','😚','😙','🥲','😋','😛','😜','🤪','😝','🤑','🤗','🤭','🫢','🤫','🤔','🤐','🤨','😐','😑','😶','😏','😒','🙄','😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕','🤢','🤮','🤧','🥵','🥶','🥴','😵','💫','🤯','🤠','🥳','🥸','😎','🤓','🧐','😕','🫤','😟','🙁','☹️','😮','😯','😲','😳','🥺','🫣','😦','😧','😨','😰','😥','😢','😭','😱','😖','😣','😞','😓','😩','😫','🥱','😤','😡','😠','🤬','😈','👿','💀','☠️','💩','🤡','👹','👺','👻','👽','👾','🤖','😺','😸','😹','😻','😼','😽','🙀','😿','😾'] },
+  { icon:'👋', label:'Orang & Tubuh',
+    emojis:['👋','🤚','🖐','✋','🖖','🫱','🫲','🫳','🫴','👌','🤌','🤏','✌️','🤞','🫰','🤟','🤘','🤙','👈','👉','👆','🖕','👇','☝️','🫵','👍','👎','✊','👊','🤛','🤜','👏','🫶','🙌','👐','🤲','🤝','🙏','✍️','💅','🤳','💪','🦾','🦵','🦿','🦶','👂','🦻','👃','🫀','🫁','🧠','🦷','🦴','👀','👁','👅','👄','🫦','👤','👥','🫂','👣'] },
+  { icon:'👗', label:'Pakaian & Aksesoris',
+    emojis:['👓','🕶','🥽','🌂','☂️','🧵','🪡','🧶','🪢','👒','🎩','🪖','⛑','📿','💄','💍','💎','👜','👝','🎒','🧳','👛','👚','🧥','🥼','👔','👕','👖','🩱','👗','👘','🥻','🩴','🥿','👟','👞','👠','👡','👢','🩰','🧤','🧣','🎓','👑','💼'] },
+  { icon:'🐶', label:'Hewan & Alam',
+    emojis:['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐻‍❄️','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🙈','🙉','🙊','🐔','🐧','🐦','🐤','🦅','🦆','🦢','🦉','🦚','🦜','🐸','🐊','🐢','🦎','🐍','🐲','🦕','🦖','🐳','🐋','🦈','🐬','🦭','🐟','🐠','🐡','🦐','🦑','🐙','🦞','🦀','🦋','🐛','🐜','🐝','🪲','🐞','🦗','🪳','🕷','🦂','🦟','🪰','🌸','💐','🌹','🌺','🌻','🌼','🌷','🪷','🌱','🌿','🍀','🍁','🍂','🍃','🌵','🎋','🎍','🌾','🍄','🪸','🪨','🌰','🦔','🐾','🐉','🐲','🌍','🌎','🌏','⭐','🌟','✨','🌈','☀️','🌤','⛅','🌦','🌧','⛈','🌩','🌨','❄️','☃️','⛄','🌬','💨','💧','💦','🌊','🌀','🌪','🌫','🌈'] },
+  { icon:'🍎', label:'Makanan & Minuman',
+    emojis:['🍎','🍐','🍊','🍋','🍌','🍉','🍇','🍓','🫐','🍈','🍒','🍑','🥭','🍍','🥥','🥝','🍅','🍆','🥑','🥦','🥬','🥒','🌶','🫑','🧄','🧅','🥔','🍠','🥐','🥯','🍞','🥖','🥨','🧀','🥚','🍳','🧈','🥞','🧇','🥓','🥩','🍗','🍖','🌭','🍔','🍟','🍕','🫓','🥪','🥙','🧆','🌮','🌯','🫔','🥗','🥘','🫕','🥫','🍝','🍜','🍲','🍛','🍣','🍱','🥟','🦪','🍤','🍙','🍚','🍘','🍥','🥮','🍢','🧁','🍰','🎂','🍮','🍭','🍬','🍫','🍿','🍩','🍪','🌰','🥜','🍯','🧃','🥤','🧋','☕','🍵','🫖','🍺','🍻','🥂','🍷','🥃','🍸','🍹','🧉','🍾','🧊','🥄','🍴','🫙'] },
+  { icon:'✈️', label:'Perjalanan & Tempat',
+    emojis:['🚗','🚕','🚙','🚌','🚎','🏎','🚓','🚑','🚒','🚐','🛻','🚚','🚛','🚜','🏍','🛵','🛺','🚲','🛴','🛹','🛼','🚏','🛣','🛤','⛽','🚨','🚥','🚦','🛑','🚧','⚓','🛟','⛵','🚤','🛥','🛳','⛴','🚢','✈️','🛩','🛫','🛬','🪂','💺','🚁','🛸','🚀','🛶','🏠','🏡','🏢','🏣','🏤','🏥','🏦','🏨','🏩','🏪','🏫','🏬','🏭','🏯','🏰','💒','🗼','🗽','🗺','🧭','🏔','⛰','🌋','🗻','🏕','🏖','🏜','🏝','🏞','🏟','🌁','🌃','🏙','🌄','🌅','🌆','🌇','🌉','🎑','🗾'] },
+  { icon:'⚽', label:'Aktivitas & Olahraga',
+    emojis:['⚽','🏀','🏈','⚾','🥎','🎾','🏐','🏉','🥏','🎱','🪀','🏓','🏸','🏒','🥊','🥋','⛳','🎣','🤿','🎽','🛷','🥌','🎿','⛷','🏂','🪂','🏋️','🤼','🤸','⛹️','🤺','🏇','🧘','🏌','🏄','🚣','🧗','🚵','🚴','🏆','🥇','🥈','🥉','🏅','🎖','🏵','🎗','🎫','🎟','🎪','🤹','🎭','🎨','🖼','🎰','🚂','🎠','🎡','🎢','🎪'] },
+  { icon:'💡', label:'Benda & Teknologi',
+    emojis:['📱','💻','⌨️','🖥','🖨','🖱','💾','💿','📀','🧮','📺','📷','📸','📹','🎥','📽','🎞','📞','☎️','📟','📠','📡','🔋','🔌','💡','🔦','🕯','🪔','🧯','💰','💳','💎','⚖️','🔑','🗝','🔨','🪓','⛏','⚒','🛠','🗡','⚔️','🔫','🏹','🛡','🔧','🔩','⚙️','🗜','🔗','⛓','🧲','🔬','🔭','📡','💊','💉','🩺','🩹','🩼','🩻','🧸','🪆','🖼','🛍','🎁','📦','📫','📪','📬','📭','📮','🗳','✏️','✒️','🖊','🖋','📝','📁','📂','🗂','📅','📆','🗒','🗓','📇','📈','📉','📊','📋','📌','📍','✂️','🗃','🗄','🗑','🔏','🔐','🔒','🔓'] },
+  { icon:'💟', label:'Simbol',
+    emojis:['❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❤️‍🔥','❤️‍🩹','❣️','💕','💞','💓','💗','💖','💘','💝','💟','☮️','✝️','☪️','🕉','☸️','✡️','🔯','🕎','☯️','🛐','⛎','♈','♉','♊','♋','♌','♍','♎','♏','♐','♑','♒','♓','🆔','⚛️','🉑','☢️','☣️','📴','📳','🈶','🈚','🈸','🈺','🈷️','✴️','🆚','💮','🉐','㊙️','㊗️','🈴','🈵','🈹','🈲','🅰️','🅱️','🆎','🆑','🅾️','🆘','❌','⭕','🛑','⛔','📛','🚫','💯','🔅','🔆','🔱','⚜️','🔰','♻️','✅','🈯','💹','❇️','✳️','❎','🌐','💠','Ⓜ️','🌀','💤','🏧','🚾','♿','🅿️','🛗','🈳','🈹','🚳','🚭','🚯','🚱','🚷','📵','🔞','☎️','🔔','🔕','🎵','🎶','⁉️','❓','❔','‼️','🔃','➕','➖','✖️','➗','♾','💲','💱','🔴','🟠','🟡','🟢','🔵','🟣','⚫','⚪','🟤','🔶','🔷','🔸','🔹','🔺','🔻','💠','🔘','🔲','🔳','▪️','▫️','◾','◽','◼️','◻️','🟥','🟧','🟨','🟩','🟦','🟪','⬛','⬜','🟫','🔈','🔉','🔊','📢','📣'] },
+];
+
+// ── Emoji Picker Logic ─────────────────────────────────────
+let epActiveCat = 0;
+let epRecents   = JSON.parse(localStorage.getItem('ep_recents') || '[]');
+
+function buildEmojiPicker() {
+  // Category tabs
+  const cats = document.getElementById('epCats');
+  cats.innerHTML = EMOJI_CATS.map((c, i) => `
+    <button class="ep-cat-btn ${i===0?'active':''}" onclick="switchEpCat(${i})" title="${c.label}">${c.icon}</button>
+  `).join('');
+  renderEpGrid(0);
+  renderEpRecents();
+}
+
+function switchEpCat(i) {
+  epActiveCat = i;
+  document.querySelectorAll('.ep-cat-btn').forEach((b,j) =>
+    b.classList.toggle('active', i===j));
+  document.getElementById('epSearch').value = '';
+  renderEpGrid(i);
+}
+
+function renderEpGrid(catIdx) {
+  const wrap = document.getElementById('epGridWrap');
+  const emojis = EMOJI_CATS[catIdx].emojis;
+  wrap.innerHTML = `
+    <div class="ep-cat-label">${EMOJI_CATS[catIdx].label}</div>
+    <div class="ep-grid">${emojis.map(e =>
+      `<button class="ep-btn" onclick="pickEmoji('${e}')" title="${e}">${e}</button>`
+    ).join('')}</div>`;
+}
+
+function searchEmoji(q) {
+  const wrap = document.getElementById('epGridWrap');
+  if (!q.trim()) { renderEpGrid(epActiveCat); return; }
+  const all = EMOJI_CATS.flatMap(c => c.emojis);
+  const unique = [...new Set(all)];
+  // Simple match: show all (full emoji set filtered by search isn't feasible without names DB)
+  // Show all emojis when searching
+  wrap.innerHTML = `
+    <div class="ep-cat-label">Hasil Pencarian</div>
+    <div class="ep-grid">${unique.map(e =>
+      `<button class="ep-btn" onclick="pickEmoji('${e}')" title="${e}">${e}</button>`
+    ).join('')}</div>`;
+}
+
+function renderEpRecents() {
+  const el = document.getElementById('epRecent');
+  const row = document.getElementById('epRecentRow');
+  if (!epRecents.length) { el.style.display='none'; return; }
+  el.style.display = 'block';
+  row.innerHTML = epRecents.slice(0,16).map(e =>
+    `<button class="ep-btn" style="font-size:1.1rem;" onclick="pickEmoji('${e}')">${e}</button>`
+  ).join('');
+}
+
+function pickEmoji(emoji) {
+  selectedIconValue = emoji;
+  document.getElementById('selectedIconPreview').textContent = emoji;
+  // Simpan ke recents
+  epRecents = [emoji, ...epRecents.filter(e => e !== emoji)].slice(0, 16);
+  localStorage.setItem('ep_recents', JSON.stringify(epRecents));
+  closeEmojiPicker();
+}
+
+function toggleIconPicker() {
+  const picker = document.getElementById('emojiPicker');
+  if (picker.classList.contains('open')) {
+    closeEmojiPicker();
+  } else {
+    openEmojiPicker();
+  }
+}
+
+function openEmojiPicker() {
+  const trigger = document.getElementById('selectedIconPreview');
+  const rect    = trigger.getBoundingClientRect();
+  const picker  = document.getElementById('emojiPicker');
+  picker.classList.add('open');
+  // Posisi di bawah tombol
+  let top  = rect.bottom + window.scrollY + 6;
+  let left = rect.left   + window.scrollX;
+  // Jaga supaya tidak keluar layar kanan
+  if (left + 340 > window.innerWidth) left = window.innerWidth - 348;
+  picker.style.top  = top  + 'px';
+  picker.style.left = left + 'px';
+  document.getElementById('epSearch').focus();
+  renderEpRecents();
+}
+
+function closeEmojiPicker() {
+  document.getElementById('emojiPicker').classList.remove('open');
+}
+
+// Tutup picker saat klik di luar
+document.addEventListener('click', e => {
+  const picker  = document.getElementById('emojiPicker');
+  const trigger = document.getElementById('selectedIconPreview');
+  if (!picker.contains(e.target) && e.target !== trigger) closeEmojiPicker();
+});
+
+buildEmojiPicker();
+
+async function loadClasses() {
+  const res  = await fetch('/train/classes');
+  const data = await res.json();
+  clsNames  = data.classes;
+  clsColors = data.colors  || clsNames.map((_, i) => PALETTE[i % PALETTE.length]);
+  clsIcons  = data.icons   || clsNames.map(() => '🏷');
+  clsAlerts = data.alerts  || clsNames.map(() => false);
+  renderClassBtns();
+}
+loadClasses();
+
+function renderClassBtns() {
+  const container = document.getElementById('classBtns');
+  container.innerHTML = clsNames.map((name, i) => {
+    const color     = clsColors[i] || PALETTE[i % PALETTE.length];
+    const icon      = clsIcons[i]  || '🏷';
+    const isAlert   = clsAlerts[i];
+    const isActive  = i === currentCls;
+    const textColor = isLight(color) ? '#000' : '#fff';
+    return `
+    <button class="class-btn ${isActive ? 'active' : ''}"
+      data-cls="${i}"
+      style="border-left:4px solid ${color};
+             ${isActive ? `background:${color};border-color:${color};color:${textColor};` : ''}"
+      onclick="selectClass(this)">
+      <span style="margin-right:6px;">${icon}</span>
+      <span style="flex:1;">${name}</span>
+      ${isAlert ? `<span style="font-size:0.7rem;margin-left:4px;" title="Trigger alarm">🔔</span>` : ''}
+    </button>`;
+  }).join('');
+}
+
+function isLight(hex) {
+  const r = parseInt(hex.slice(1,3),16);
+  const g = parseInt(hex.slice(3,5),16);
+  const b = parseInt(hex.slice(5,7),16);
+  return (r*299 + g*587 + b*114) / 1000 > 128;
+}
+
+function showAddClass() {
+  const f = document.getElementById('addClassForm');
+  const isHidden = f.style.display === 'none' || f.style.display === '';
+  f.style.display = isHidden ? 'flex' : 'none';
+  if (isHidden) {
+    selectedIconValue = '🏷';
+    document.getElementById('selectedIconPreview').textContent = '🏷';
+    document.getElementById('newClassName').focus();
+  }
+}
+function hideAddClass() {
+  document.getElementById('addClassForm').style.display   = 'none';
+  document.getElementById('iconPicker').style.display     = 'none';
+  document.getElementById('newClassName').value           = '';
+  document.getElementById('newClassColor').value          = '#a78bfa';
+  document.getElementById('colorPreview').style.background = '#a78bfa';
+  document.getElementById('selectedIconPreview').textContent = '🏷';
+  selectedIconValue = '🏷';
+  // Reset toggle alert
+  const cb    = document.getElementById('newClassAlert');
+  const track = document.getElementById('alertToggleTrack');
+  const thumb = document.getElementById('alertToggleThumb');
+  cb.checked = false;
+  track.style.background = 'var(--border)';
+  thumb.style.left       = '3px';
+}
+
+async function addNewClass() {
+  const name  = document.getElementById('newClassName').value.trim();
+  const color = document.getElementById('newClassColor').value;
+  const icon  = selectedIconValue || '🏷';
+  const alert_on = document.getElementById('newClassAlert').checked;
+  if (!name) { document.getElementById('newClassName').focus(); return; }
+
+  const res  = await fetch('/train/add-class', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ name, color, icon, alert: alert_on })
+  });
+  const data = await res.json();
+  if (data.ok) {
+    clsNames  = data.classes;
+    clsColors = data.colors;
+    clsIcons  = data.icons;
+    clsAlerts = data.alerts;
+    renderClassBtns();
+    hideAddClass();
+    loadInfo();
+  } else {
+    alert('❌ ' + data.error);
+  }
+}
+
+document.getElementById('annoFileInput').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  document.getElementById('annoFilename').textContent = file.name;
+  const url = URL.createObjectURL(file);
+  imgEl = new Image();
+  imgEl.onload = () => {
+    origImgEl = imgEl;    // simpan asli untuk reset
+    loadImageToCanvas(imgEl);
+  };
+  imgEl.src = url;
+});
+
+function loadImageToCanvas(img) {
+  const maxW = document.getElementById('canvasWrap').clientWidth;
+  scale = Math.min(1, maxW / img.width);
+  canvas.width  = Math.round(img.width  * scale);
+  canvas.height = Math.round(img.height * scale);
+  document.getElementById('canvasPlaceholder').style.display = 'none';
+  canvas.style.display  = 'block';
+  modeBadge.style.display = 'inline-block';
+  document.getElementById('clearCanvasBtn').style.display = 'inline-flex';
+  document.getElementById('undoBtn').style.display        = 'inline-flex';
+  document.getElementById('saveAnnoBtn').style.display    = 'inline-flex';
+  document.getElementById('cropModeBtn').style.display    = 'inline-flex';
+  document.getElementById('resetImgBtn').style.display    = origImgEl && img !== origImgEl ? 'inline-flex' : 'none';
+  document.getElementById('annoModeRow').style.display    = 'flex';
+  boxes = []; polygons = []; currentPoly = [];
+  isCropMode = false;
+  setAnnotMode(annotMode);   // refresh mode UI
+  redraw();
+}
+
+// ── Crop sebelum labeling ──────────────────────────────────
+function toggleCropMode() {
+  isCropMode = !isCropMode;
+  cropRect   = null;
+  const btn  = document.getElementById('cropModeBtn');
+  if (isCropMode) {
+    canvas.classList.add('crop-mode');
+    cropOverlay.classList.add('active');
+    modeBadge.textContent = '✂ CROP';
+    modeBadge.className   = 'mode-badge crop';
+    btn.style.borderColor = '#eab308';
+    btn.style.color       = '#eab308';
+    btn.textContent       = '✕ Keluar Crop';
+    document.getElementById('applyCropBtn').style.display  = 'none';
+    document.getElementById('cancelCropBtn').style.display = 'none';
+  } else {
+    cancelCrop();
+  }
+  redraw();
+}
+
+function cancelCrop() {
+  isCropMode = false;
+  cropRect   = null;
+  canvas.classList.remove('crop-mode');
+  cropOverlay.classList.remove('active');
+  modeBadge.textContent = '✏ LABEL';
+  modeBadge.className   = 'mode-badge label';
+  const btn = document.getElementById('cropModeBtn');
+  btn.style.borderColor = '';
+  btn.style.color       = '';
+  btn.textContent       = '✂ Crop Gambar';
+  document.getElementById('applyCropBtn').style.display  = 'none';
+  document.getElementById('cancelCropBtn').style.display = 'none';
+  redraw();
+}
+
+function applyCrop() {
+  if (!cropRect) return;
+  const { x1, y1, x2, y2 } = cropRect;
+  const cw = Math.abs(x2 - x1), ch = Math.abs(y2 - y1);
+  if (cw < 10 || ch < 10) { alert('Area crop terlalu kecil'); return; }
+
+  // Gambar region crop ke canvas temp → buat image baru
+  const tmp = document.createElement('canvas');
+  tmp.width = cw; tmp.height = ch;
+  tmp.getContext('2d').drawImage(canvas,
+    Math.min(x1,x2), Math.min(y1,y2), cw, ch, 0, 0, cw, ch);
+
+  const croppedImg = new Image();
+  croppedImg.onload = () => {
+    imgEl = croppedImg;
+    loadImageToCanvas(imgEl);
+    document.getElementById('resetImgBtn').style.display = 'inline-flex';
+  };
+  croppedImg.src = tmp.toDataURL('image/jpeg', 0.95);
+}
+
+function resetImage() {
+  if (!origImgEl) return;
+  imgEl = origImgEl;
+  loadImageToCanvas(imgEl);
+  document.getElementById('resetImgBtn').style.display = 'none';
+}
+
+// ── Export crop per bbox ───────────────────────────────────
+function exportCrops() {
+  if (!boxes.length) { alert('Tidak ada anotasi untuk di-crop'); return; }
+  boxes.forEach((b, i) => {
+    const x = Math.round(Math.min(b.x1,b.x2));
+    const y = Math.round(Math.min(b.y1,b.y2));
+    const w = Math.round(Math.abs(b.x2-b.x1));
+    const h = Math.round(Math.abs(b.y2-b.y1));
+    const tmp = document.createElement('canvas');
+    tmp.width = w; tmp.height = h;
+    tmp.getContext('2d').drawImage(canvas, x, y, w, h, 0, 0, w, h);
+    const a = document.createElement('a');
+    a.href     = tmp.toDataURL('image/jpeg', 0.95);
+    a.download = `crop_${clsNames[b.cls]}_${i+1}.jpg`;
+    a.click();
+  });
+}
+
+function selectClass(btn) {
+  document.querySelectorAll('.class-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  currentCls = parseInt(btn.dataset.cls);
+}
+
+function redraw() {
+  ctx.drawImage(imgEl, 0, 0, canvas.width, canvas.height);
+
+  // ── Draw completed bounding boxes ──
+  boxes.forEach(b => {
+    const color = clsColors[b.cls] || '#a78bfa';
+    ctx.strokeStyle = color; ctx.lineWidth = 2;
+    ctx.strokeRect(b.x1, b.y1, b.x2-b.x1, b.y2-b.y1);
+    ctx.fillStyle = color + '22';
+    ctx.fillRect(b.x1, b.y1, b.x2-b.x1, b.y2-b.y1);
+    const lw = ctx.measureText(clsNames[b.cls]).width + 10;
+    ctx.fillStyle = color;
+    ctx.fillRect(b.x1, b.y1-20, lw, 20);
+    ctx.fillStyle = isLight(color) ? '#000' : '#fff';
+    ctx.font = 'bold 12px Segoe UI';
+    ctx.fillText(clsNames[b.cls], b.x1+4, b.y1-5);
+  });
+
+  // ── Draw completed polygons ──
+  polygons.forEach(p => {
+    if (!p.points.length) return;
+    const color = clsColors[p.cls] || '#a78bfa';
+    ctx.beginPath();
+    ctx.moveTo(p.points[0].x, p.points[0].y);
+    p.points.forEach(pt => ctx.lineTo(pt.x, pt.y));
+    ctx.closePath();
+    ctx.fillStyle   = color + '30';
+    ctx.fill();
+    ctx.strokeStyle = color;
+    ctx.lineWidth   = 2;
+    ctx.stroke();
+    // Vertex dots
+    p.points.forEach(pt => {
+      ctx.beginPath(); ctx.arc(pt.x, pt.y, 4, 0, Math.PI*2);
+      ctx.fillStyle = color; ctx.fill();
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.stroke();
+    });
+    // Label
+    const lw = ctx.measureText(clsNames[p.cls]).width + 10;
+    ctx.fillStyle = color;
+    ctx.fillRect(p.points[0].x, p.points[0].y - 20, lw, 20);
+    ctx.fillStyle = isLight(color) ? '#000' : '#fff';
+    ctx.font = 'bold 12px Segoe UI'; ctx.lineWidth = 1;
+    ctx.fillText(clsNames[p.cls], p.points[0].x+4, p.points[0].y-5);
+  });
+
+  // ── Draw polygon being drawn (live preview) ──
+  if (annotMode === 'polygon' && currentPoly.length > 0) {
+    const color = clsColors[currentCls] || '#a78bfa';
+    ctx.strokeStyle = color; ctx.lineWidth = 2;
+    ctx.setLineDash([5,3]);
+    ctx.beginPath();
+    ctx.moveTo(currentPoly[0].x, currentPoly[0].y);
+    currentPoly.forEach(pt => ctx.lineTo(pt.x, pt.y));
+    if (polyMousePos) ctx.lineTo(polyMousePos.x, polyMousePos.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // Dots
+    currentPoly.forEach((pt, i) => {
+      ctx.beginPath(); ctx.arc(pt.x, pt.y, i===0 ? 7 : 4, 0, Math.PI*2);
+      ctx.fillStyle = i===0 ? '#fff' : color; ctx.fill();
+      ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.stroke();
+    });
+    // Glow on first point saat mouse dekat (snap indicator)
+    if (currentPoly.length >= 3 && polyMousePos) {
+      const d = Math.hypot(polyMousePos.x - currentPoly[0].x, polyMousePos.y - currentPoly[0].y);
+      if (d < 18) {
+        ctx.beginPath(); ctx.arc(currentPoly[0].x, currentPoly[0].y, 12, 0, Math.PI*2);
+        ctx.fillStyle = color + '55'; ctx.fill();
+      }
+    }
+  }
+
+  updateAnnList();
+}
+
+// ── BBox mouse handlers ────────────────────────────────────
+canvas.addEventListener('mousedown', e => {
+  if (annotMode === 'polygon' || isCropMode && annotMode === 'polygon') return;
+  const r = canvas.getBoundingClientRect();
+  startX = e.clientX - r.left;
+  startY = e.clientY - r.top;
+  drawing = true;
+});
+
+canvas.addEventListener('mousemove', e => {
+  const r  = canvas.getBoundingClientRect();
+  const mx = e.clientX - r.left, my = e.clientY - r.top;
+
+  // Polygon preview
+  if (annotMode === 'polygon' && !isCropMode) {
+    polyMousePos = { x: mx, y: my };
+    if (currentPoly.length > 0) redraw();
+    return;
+  }
+
+  if (!drawing) return;
+  redraw();
+  if (isCropMode) {
+    ctx.strokeStyle = '#eab308'; ctx.lineWidth = 2;
+    ctx.setLineDash([6,3]);
+    ctx.strokeRect(startX, startY, mx-startX, my-startY);
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    const x1=Math.min(startX,mx), y1=Math.min(startY,my);
+    const x2=Math.max(startX,mx), y2=Math.max(startY,my);
+    ctx.fillRect(0,0,canvas.width,y1); ctx.fillRect(0,y2,canvas.width,canvas.height-y2);
+    ctx.fillRect(0,y1,x1,y2-y1);     ctx.fillRect(x2,y1,canvas.width-x2,y2-y1);
+    ctx.setLineDash([]);
+  } else {
+    ctx.strokeStyle = clsColors[currentCls]; ctx.lineWidth = 2;
+    ctx.setLineDash([5,3]);
+    ctx.strokeRect(startX, startY, mx-startX, my-startY);
+    ctx.setLineDash([]);
+  }
+});
+
+canvas.addEventListener('mouseup', e => {
+  if (annotMode === 'polygon') return;
+  if (!drawing) return;
+  drawing = false;
+  const r  = canvas.getBoundingClientRect();
+  const mx = e.clientX - r.left, my = e.clientY - r.top;
+  if (Math.abs(mx-startX) < 10 || Math.abs(my-startY) < 10) return;
+
+  if (isCropMode) {
+    cropRect = { x1:Math.min(startX,mx), y1:Math.min(startY,my),
+                 x2:Math.max(startX,mx), y2:Math.max(startY,my) };
+    document.getElementById('applyCropBtn').style.display  = 'inline-flex';
+    document.getElementById('cancelCropBtn').style.display = 'inline-flex';
+    redraw();
+    const {x1,y1,x2,y2} = cropRect;
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.fillRect(0,0,canvas.width,y1); ctx.fillRect(0,y2,canvas.width,canvas.height-y2);
+    ctx.fillRect(0,y1,x1,y2-y1);      ctx.fillRect(x2,y1,canvas.width-x2,y2-y1);
+    ctx.strokeStyle='#eab308'; ctx.lineWidth=2;
+    ctx.strokeRect(x1,y1,x2-x1,y2-y1);
+  } else {
+    boxes.push({ cls:currentCls,
+      x1:Math.min(startX,mx), y1:Math.min(startY,my),
+      x2:Math.max(startX,mx), y2:Math.max(startY,my) });
+    document.getElementById('exportCropBtn').style.display = 'inline-flex';
+    redraw();
+  }
+});
+
+// ── Polygon click handler ──────────────────────────────────
+canvas.addEventListener('click', e => {
+  if (annotMode !== 'polygon' || isCropMode || !imgEl.src) return;
+  const r = canvas.getBoundingClientRect();
+  const x = e.clientX - r.left, y = e.clientY - r.top;
+
+  // Snap ke titik pertama untuk tutup polygon
+  if (currentPoly.length >= 3) {
+    const d = Math.hypot(x - currentPoly[0].x, y - currentPoly[0].y);
+    if (d < 18) { closePoly(); return; }
+  }
+  currentPoly.push({ x, y });
+  redraw();
+});
+
+// Double-click tutup polygon
+canvas.addEventListener('dblclick', e => {
+  if (annotMode !== 'polygon' || isCropMode) return;
+  e.preventDefault();
+  if (currentPoly.length > 0) currentPoly.pop(); // hapus titik dari click event terakhir
+  closePoly();
+});
+
+// ESC batalkan polygon
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && annotMode === 'polygon') {
+    currentPoly = []; polyMousePos = null; redraw();
+  }
+});
+
+let selectedBoxIdx = -1;
+
+function updateAnnList() {
+  const list  = document.getElementById('annList');
+  const total = boxes.length + polygons.length;
+  document.getElementById('annCount').textContent = total;
+
+  const bboxRows = boxes.map((b, i) => `
+    <div class="ann-item ${i===selectedBoxIdx?'selected':''}" style="border:1px solid transparent;"
+         onclick="openClsPopup(event,${i})">
+      <span class="dot" style="background:${clsColors[b.cls]}"></span>
+      <span style="font-size:0.82rem;flex:1;">
+        ${clsIcons[b.cls]||''} ${clsNames[b.cls]}
+        <span class="ann-type-badge">📦 Box</span>
+      </span>
+      <span style="font-size:0.68rem;color:var(--muted);margin-right:6px;">✏ ganti</span>
+      <span class="del" onclick="event.stopPropagation();deleteBox(${i})">✕</span>
+    </div>`).join('');
+
+  const polyRows = polygons.map((p, i) => `
+    <div class="ann-item" style="border:1px solid transparent;"
+         onclick="openPolyClsPopup(event,${i})">
+      <span class="dot" style="background:${clsColors[p.cls]}"></span>
+      <span style="font-size:0.82rem;flex:1;">
+        ${clsIcons[p.cls]||''} ${clsNames[p.cls]}
+        <span class="ann-type-badge" style="background:rgba(34,211,238,0.15);color:#22d3ee;">🔷 ${p.points.length} titik</span>
+      </span>
+      <span style="font-size:0.68rem;color:var(--muted);margin-right:6px;">✏ ganti</span>
+      <span class="del" onclick="event.stopPropagation();deletePoly(${i})">✕</span>
+    </div>`).join('');
+
+  list.innerHTML = bboxRows + polyRows;
+}
+
+function openClsPopup(e, idx) {
+  e.stopPropagation();
+  selectedBoxIdx = idx;
+  updateAnnList();  // highlight item terpilih
+
+  const popup = document.getElementById('clsPopup');
+  const btns  = document.getElementById('clsPopupBtns');
+
+  btns.innerHTML = clsNames.map((name, ci) => `
+    <button class="cls-popup-btn ${boxes[idx].cls === ci ? 'current' : ''}"
+      onclick="changeBoxClass(${idx}, ${ci})">
+      <span style="width:10px;height:10px;border-radius:50%;background:${clsColors[ci]};flex-shrink:0;display:inline-block;"></span>
+      ${clsIcons[ci] || ''} ${name}
+    </button>`).join('');
+
+  popup.classList.add('open');
+
+  // Posisi popup di dekat item yang diklik
+  const rect = e.currentTarget.getBoundingClientRect();
+  let top  = rect.top  + window.scrollY;
+  let left = rect.right + window.scrollX + 8;
+  if (left + 180 > window.innerWidth) left = rect.left + window.scrollX - 188;
+  popup.style.top  = top  + 'px';
+  popup.style.left = left + 'px';
+}
+
+function changeBoxClass(boxIdx, newCls) {
+  boxes[boxIdx].cls = newCls;
+  selectedBoxIdx = -1;
+  document.getElementById('clsPopup').classList.remove('open');
+  redraw();
+}
+
+function closeClsPopup() {
+  selectedBoxIdx = -1;
+  document.getElementById('clsPopup').classList.remove('open');
+  updateAnnList();
+}
+
+// Tutup popup saat klik di luar
+document.addEventListener('click', e => {
+  const popup = document.getElementById('clsPopup');
+  if (popup.classList.contains('open') && !popup.contains(e.target)) {
+    closeClsPopup();
+  }
+});
+
+// ── Annotation mode switch ─────────────────────────────────
+function setAnnotMode(mode) {
+  annotMode = mode;
+  currentPoly = []; polyMousePos = null;
+
+  document.getElementById('modeBboxBtn').classList.toggle('active', mode === 'bbox');
+  document.getElementById('modePolyBtn').classList.toggle('active', mode === 'polygon');
+  document.getElementById('polyHint').style.display = mode === 'polygon' ? 'inline-block' : 'none';
+
+  canvas.classList.toggle('poly-mode', mode === 'polygon');
+  canvas.classList.toggle('crop-mode', isCropMode);
+
+  modeBadge.textContent = mode === 'polygon' ? '🔷 POLYGON' : '✏ LABEL';
+  modeBadge.className   = mode === 'polygon' ? 'mode-badge poly' : 'mode-badge label';
+  redraw();
+}
+
+// ── Polygon helpers ────────────────────────────────────────
+function closePoly() {
+  if (currentPoly.length < 3) {
+    alert('Minimal 3 titik untuk membentuk polygon!'); return;
+  }
+  polygons.push({ type:'polygon', cls: currentCls, points: [...currentPoly] });
+  currentPoly = []; polyMousePos = null;
+  document.getElementById('exportCropBtn').style.display = 'inline-flex';
+  redraw();
+}
+
+function deletePoly(i) { polygons.splice(i, 1); redraw(); }
+
+function openPolyClsPopup(e, idx) {
+  e.stopPropagation();
+  selectedBoxIdx = -1;
+  const popup = document.getElementById('clsPopup');
+  const btns  = document.getElementById('clsPopupBtns');
+  btns.innerHTML = clsNames.map((name, ci) => `
+    <button class="cls-popup-btn ${polygons[idx].cls === ci ? 'current' : ''}"
+      onclick="changePolyClass(${idx}, ${ci})">
+      <span style="width:10px;height:10px;border-radius:50%;background:${clsColors[ci]};display:inline-block;"></span>
+      ${clsIcons[ci]||''} ${name}
+    </button>`).join('');
+  popup.classList.add('open');
+  const rect = e.currentTarget.getBoundingClientRect();
+  let top = rect.top + window.scrollY, left = rect.right + window.scrollX + 8;
+  if (left + 180 > window.innerWidth) left = rect.left + window.scrollX - 188;
+  popup.style.top = top+'px'; popup.style.left = left+'px';
+}
+
+function changePolyClass(polyIdx, newCls) {
+  polygons[polyIdx].cls = newCls;
+  document.getElementById('clsPopup').classList.remove('open');
+  redraw();
+}
+
+function deleteBox(i) { boxes.splice(i, 1); selectedBoxIdx = -1; redraw(); }
+
+function undoLast() {
+  if (annotMode === 'polygon' && currentPoly.length > 0) {
+    currentPoly.pop(); redraw();
+  } else if (annotMode === 'polygon' && polygons.length > 0) {
+    polygons.pop(); redraw();
+  } else {
+    boxes.pop(); redraw();
+  }
+}
+
+function clearAnnotations() {
+  boxes = []; polygons = []; currentPoly = []; selectedBoxIdx = -1; redraw();
+}
+
+async function saveAnnotation() {
+  const totalAnn = boxes.length + polygons.length;
+  if (!imgEl.src || totalAnn === 0) {
+    alert('Gambar dan minimal 1 anotasi diperlukan!'); return;
+  }
+
+  // Simpan gambar ASLI (resolusi penuh), bukan canvas yang diskalakan
+  const origW = imgEl.naturalWidth  || imgEl.width;
+  const origH = imgEl.naturalHeight || imgEl.height;
+  const origCanvas = document.createElement('canvas');
+  origCanvas.width  = origW;
+  origCanvas.height = origH;
+  origCanvas.getContext('2d').drawImage(imgEl, 0, 0, origW, origH);
+  const blob = await new Promise(r => origCanvas.toBlob(r, 'image/jpeg', 0.95));
+
+  const form = new FormData();
+  form.append('image', blob, 'annotated.jpg');
+
+  // Gabungkan bbox + polygon, scale balik ke koordinat gambar asli
+  const annotations = [
+    ...boxes.map(b => ({
+      type: 'bbox', class_id: b.cls,
+      x1: b.x1/scale, y1: b.y1/scale, x2: b.x2/scale, y2: b.y2/scale
+    })),
+    ...polygons.map(p => ({
+      type: 'polygon', class_id: p.cls,
+      points: p.points.map(pt => ({ x: pt.x/scale, y: pt.y/scale }))
+    }))
+  ];
+  form.append('annotations', JSON.stringify(annotations));
+
+  const res  = await fetch('/train/upload', { method: 'POST', body: form });
+  const data = await res.json();
+  const el   = document.getElementById('saveStatus');
+  if (data.ok) {
+    el.textContent = `✅ Tersimpan: ${data.saved}`;
+    el.style.display = 'block';
+    setTimeout(() => el.style.display = 'none', 3000);
+    loadInfo(); // refresh stats
+  } else {
+    alert('❌ ' + data.error);
+  }
+}
+
+// ── Training ───────────────────────────────────────────────
+let evtSource = null;
+
+async function startTraining() {
+  const btn = document.getElementById('startTrainBtn');
+
+  const cfg = {
+    model_size: document.getElementById('cfgModel').value,
+    epochs:     parseInt(document.getElementById('cfgEpochs').value),
+    imgsz:      parseInt(document.getElementById('cfgImgsz').value),
+    batch:      parseInt(document.getElementById('cfgBatch').value),
+  };
+
+  btn.disabled = true;
+  document.getElementById('trainStatus').textContent = '⏳ Memulai training...';
+
+  const res = await fetch('/train/start', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(cfg)
+  });
+  const data = await res.json();
+  if (!data.ok) {
+    alert('❌ ' + (data.error || 'Gagal memulai training'));
+    btn.disabled = false;
+    return;
+  }
+
+  // Tampilkan progress bar
+  const prog = document.getElementById('trainProgress');
+  prog.style.display = 'block';
+
+  // Bersihkan log box
+  const logBox = document.getElementById('logBox');
+  logBox.innerHTML = '';
+
+  // Koneksi SSE
+  if (evtSource) evtSource.close();
+  evtSource = new EventSource('/train/log-stream');
+
+  // Epoch progress state
+  let _totalEpochs   = 0;
+  let _epochStart    = null;  // timestamp saat epoch pertama
+  const epochWrap    = document.getElementById('epochProgressWrap');
+  const epochCounter = document.getElementById('epochCounter');
+  const epochBarFill = document.getElementById('epochBarFill');
+  const epochEta     = document.getElementById('epochEta');
+
+  evtSource.onmessage = e => {
+    const item = JSON.parse(e.data);
+    if (item.type === 'ping') return;
+
+    // ── Tangkap total epochs dari pesan start ──
+    if (item.type === 'start' && item.total_epochs) {
+      _totalEpochs = item.total_epochs;
+      epochWrap.classList.add('active');
+      epochCounter.textContent = `0 / ${_totalEpochs}`;
+      epochBarFill.style.width = '0%';
+      epochEta.textContent = 'Menunggu epoch pertama…';
+    }
+
+    // ── Update epoch progress bar ──
+    if (item.type === 'epoch') {
+      const cur = item.current;
+      const tot = item.total || _totalEpochs || 1;
+      _totalEpochs = tot;
+      epochWrap.classList.add('active');
+      epochCounter.textContent = `${cur} / ${tot}`;
+      epochBarFill.style.width  = `${Math.round((cur / tot) * 100)}%`;
+
+      // Estimasi waktu tersisa
+      if (!_epochStart) _epochStart = Date.now();
+      if (cur > 1) {
+        const elapsed = (Date.now() - _epochStart) / 1000;   // detik
+        const secPerEp = elapsed / (cur - 1);
+        const remaining = Math.round(secPerEp * (tot - cur));
+        if (remaining < 60) {
+          epochEta.textContent = `⏱ Estimasi selesai: ${remaining} detik lagi`;
+        } else {
+          const m = Math.floor(remaining / 60), s = remaining % 60;
+          epochEta.textContent = `⏱ Estimasi selesai: ${m}m ${s}s lagi`;
+        }
+      } else {
+        epochEta.textContent = 'Menghitung estimasi…';
+      }
+    }
+
+    // ── Tambah baris ke log box ──
+    const line = document.createElement('div');
+    if (item.type === 'start') line.className = 'log-start';
+    if (item.type === 'done')  line.className = 'log-done';
+    if (item.type === 'error') line.className = 'log-error';
+    if (item.type === 'epoch') line.className = 'log-epoch';
+    if (item.msg && item.msg.includes('Epoch')) line.className = 'log-epoch';
+    line.textContent = item.msg || '';
+    logBox.appendChild(line);
+    logBox.scrollTop = logBox.scrollHeight;
+
+    if (item.type === 'done' || item.type === 'error') {
+      evtSource.close();
+      btn.disabled = false;
+      prog.style.display = 'none';
+      if (item.type === 'done') {
+        epochBarFill.style.width = '100%';
+        epochCounter.textContent = `${_totalEpochs} / ${_totalEpochs}`;
+        epochEta.textContent = '✅ Training selesai!';
+      } else {
+        epochWrap.classList.remove('active');
+      }
+      document.getElementById('trainStatus').textContent = item.type === 'done' ? '✅ Selesai!' : '❌ Gagal';
+      loadInfo(); // refresh model list
+    }
+  };
+}
+
+// ═══════════════════════════════════════════════════════════
+// CAPTURE DATASET FEATURE
+// ═══════════════════════════════════════════════════════════
+let captureStream    = null;
+let autoTimer        = null;
+let autoInterval     = null;
+let captureCountdown = 3;
+const captureVideo   = document.getElementById('captureVideo');
+const captureCamSel  = document.getElementById('captureCamSelect');
+
+// Load daftar kamera untuk capture
+async function loadCaptureCameras() {
+  try {
+    await navigator.mediaDevices.getUserMedia({ video: true });
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const cams    = devices.filter(d => d.kind === 'videoinput');
+    let iphN = 0;
+    captureCamSel.innerHTML = cams.map((c, i) => {
+      const rawLbl = c.label || 'Kamera ' + (i + 1);
+      const isIph  = /iphone|continuity|apple/i.test(rawLbl);
+      let lbl;
+      if (isIph) {
+        iphN++;
+        lbl = iphN > 1 ? `Switch to iPhone ${iphN}` : 'Switch to iPhone';
+      } else {
+        lbl = rawLbl.replace(/\s*\([^)]*\)\s*$/, '').trim() || rawLbl;
+      }
+      return `<option value="${c.deviceId}">${isIph ? '📱 ' : '📷 '}${lbl}</option>`;
+    }).join('');
+    captureCamSel.style.display = cams.length > 1 ? 'inline-block' : 'none';
+  } catch(e) { console.warn('Camera list error', e); }
+}
+
+async function startCaptureCamera() {
+  try {
+    await loadCaptureCameras();
+    const deviceId   = captureCamSel.value;
+    const constraints = { video: deviceId ? { deviceId: { exact: deviceId } } : { facingMode: 'environment' } };
+    if (captureStream) captureStream.getTracks().forEach(t => t.stop());
+    captureStream = await navigator.mediaDevices.getUserMedia(constraints);
+    captureVideo.srcObject = captureStream;
+    captureVideo.style.display = 'block';
+    document.getElementById('capturePlaceholder').style.display = 'none';
+    document.getElementById('captureLiveBadge').style.display   = 'block';
+    document.getElementById('captureCountBadge').style.display  = 'block';
+    document.getElementById('captureStartBtn').style.display    = 'none';
+    document.getElementById('captureShootBtn').style.display    = 'inline-flex';
+    document.getElementById('captureAutoBtn').style.display     = 'inline-flex';
+    document.getElementById('captureStopBtn').style.display     = 'inline-flex';
+    refreshGallery();
+  } catch(e) { alert('Tidak dapat membuka kamera: ' + e.message); }
+}
+
+function stopCaptureCamera() {
+  stopAutoCapture();
+  if (captureStream) captureStream.getTracks().forEach(t => t.stop());
+  captureStream = null;
+  captureVideo.style.display = 'none';
+  document.getElementById('capturePlaceholder').style.display  = 'flex';
+  document.getElementById('captureLiveBadge').style.display    = 'none';
+  document.getElementById('captureCountBadge').style.display   = 'none';
+  document.getElementById('captureStartBtn').style.display     = 'inline-flex';
+  document.getElementById('captureShootBtn').style.display     = 'none';
+  document.getElementById('captureAutoBtn').style.display      = 'none';
+  document.getElementById('captureStopBtn').style.display      = 'none';
+}
+
+// Ambil 1 foto
+async function capturePhoto() {
+  if (!captureStream) return;
+  // Flash effect
+  const flash = document.getElementById('captureFlash');
+  flash.style.display  = 'block';
+  flash.style.opacity  = '0.8';
+  setTimeout(() => { flash.style.opacity = '0'; setTimeout(() => flash.style.display='none', 150); }, 80);
+
+  // Draw frame ke canvas tersembunyi
+  const cv  = document.getElementById('captureCanvas');
+  const vw  = captureVideo.videoWidth  || 640;
+  const vh  = captureVideo.videoHeight || 480;
+  cv.width  = vw; cv.height = vh;
+  cv.getContext('2d').drawImage(captureVideo, 0, 0, vw, vh);
+  const frame = cv.toDataURL('image/jpeg', 0.92);
+
+  try {
+    const res  = await fetch('/dataset/capture', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ frame })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      document.getElementById('captureCount').textContent        = data.count;
+      document.getElementById('captureTotalBadge').textContent   = data.count;
+      // Tambah thumbnail ke gallery
+      prependThumbnail(data.filename);
+    } else { console.error(data.error); }
+  } catch(e) { console.error('Capture error', e); }
+}
+
+// Auto-capture setiap 3 detik
+function toggleAutoCapture() {
+  if (autoInterval) {
+    stopAutoCapture();
+  } else {
+    startAutoCapture();
+  }
+}
+
+function startAutoCapture() {
+  const btn = document.getElementById('captureAutoBtn');
+  btn.style.borderColor = '#22d3ee'; btn.style.color = '#22d3ee';
+  btn.textContent = '⏹ Stop Auto';
+  document.getElementById('autoCountdown').style.display = 'block';
+  captureCountdown = 3;
+  document.getElementById('cdNum').textContent = captureCountdown;
+
+  autoInterval = setInterval(async () => {
+    captureCountdown--;
+    document.getElementById('cdNum').textContent = captureCountdown;
+    if (captureCountdown <= 0) {
+      captureCountdown = 3;
+      document.getElementById('cdNum').textContent = 3;
+      await capturePhoto();
+    }
+  }, 1000);
+}
+
+function stopAutoCapture() {
+  if (autoInterval) { clearInterval(autoInterval); autoInterval = null; }
+  const btn = document.getElementById('captureAutoBtn');
+  btn.style.borderColor = ''; btn.style.color = '';
+  btn.textContent = '⏱ Auto (3 dtk)';
+  document.getElementById('autoCountdown').style.display = 'none';
+}
+
+// Gallery
+async function refreshGallery() {
+  const res  = await fetch('/dataset/list');
+  const data = await res.json();
+  document.getElementById('captureCount').textContent      = data.count;
+  document.getElementById('captureTotalBadge').textContent = data.count;
+  document.getElementById('capturePathInfo').textContent   = 'ip_dataset/ (' + data.count + ' foto)';
+
+  const gallery = document.getElementById('miniGallery');
+  if (!data.files.length) {
+    gallery.innerHTML = '<div style="color:var(--muted);font-size:0.75rem;grid-column:1/-1;text-align:center;padding:12px;">Belum ada foto</div>';
+    return;
+  }
+  gallery.innerHTML = data.files.map(f => `
+    <div style="position:relative; border-radius:8px; overflow:hidden;
+                background:var(--bg3); aspect-ratio:4/3; cursor:pointer;"
+         title="${f}">
+      <img src="/dataset/image/${f}" alt="${f}"
+           style="width:100%;height:100%;object-fit:cover;" loading="lazy"
+           onerror="this.parentElement.innerHTML='<div style=padding:4px;font-size:0.6rem;color:var(--muted)>${f}</div>'" />
+      <button onclick="deleteCapture('${f}', this.parentElement)"
+              style="position:absolute;top:3px;right:3px;background:rgba(239,68,68,0.8);
+                     border:none;border-radius:4px;color:#fff;font-size:0.65rem;
+                     padding:2px 5px;cursor:pointer;line-height:1;">✕</button>
+    </div>`).join('');
+}
+
+function prependThumbnail(filename) {
+  const gallery = document.getElementById('miniGallery');
+  const noMsg   = gallery.querySelector('[style*="grid-column"]');
+  if (noMsg) noMsg.remove();
+  const div = document.createElement('div');
+  div.style.cssText = 'position:relative;border-radius:8px;overflow:hidden;background:var(--bg3);aspect-ratio:4/3;';
+  div.innerHTML = `
+    <img src="/dataset/image/${filename}" alt="${filename}"
+         style="width:100%;height:100%;object-fit:cover;" />
+    <button onclick="deleteCapture('${filename}', this.parentElement)"
+            style="position:absolute;top:3px;right:3px;background:rgba(239,68,68,0.8);
+                   border:none;border-radius:4px;color:#fff;font-size:0.65rem;
+                   padding:2px 5px;cursor:pointer;line-height:1;">✕</button>`;
+  gallery.prepend(div);
+}
+
+async function deleteCapture(filename, el) {
+  if (!confirm('Hapus foto ini?')) return;
+  await fetch(`/dataset/delete/${filename}`, { method: 'DELETE' });
+  el.remove();
+  const count = parseInt(document.getElementById('captureCount').textContent || '0') - 1;
+  document.getElementById('captureCount').textContent      = count;
+  document.getElementById('captureTotalBadge').textContent = count;
+}
+
+// Ganti kamera capture
+captureCamSel.addEventListener('change', async () => {
+  if (!captureStream) return;
+  const deviceId    = captureCamSel.value;
+  const constraints = { video: { deviceId: { exact: deviceId } } };
+  if (captureStream) captureStream.getTracks().forEach(t => t.stop());
+  captureStream = await navigator.mediaDevices.getUserMedia(constraints);
+  captureVideo.srcObject = captureStream;
+});
+
+// Load gallery on page load
+refreshGallery();
+</script>
+</body>
+</html>
